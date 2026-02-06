@@ -2,6 +2,7 @@
 node_modules
 server/__pycache__/
 tests/server/__pycache__/
+__pycache__/
 .venv/
 
 # Build output
@@ -21,3 +22,9 @@ server/uv.lock
 
 # Vitest
 coverage/
+
+# Playwright
+.playwright-mcp/
+
+# Local snapshots
+rerun-*.png

@@ -1,4 +1,12 @@
+import { useState } from "react";
+
+const RERUN_WEB_PORT = 9090;
+const RERUN_GRPC_PORT = 9876;
+const RERUN_WEB_URL = `http://localhost:${RERUN_WEB_PORT}?url=rerun%2Bhttp://localhost:${RERUN_GRPC_PORT}/proxy`;
+
 export default function RerunPanel() {
+  const [loaded, setLoaded] = useState(false);
+
   return (
     <section className="panel rerun-panel">
       <div className="panel-header">
@@ -10,8 +18,20 @@ export default function RerunPanel() {
       </div>
       <div className="panel-body">
         <div className="media-placeholder is-rerun">
-          <div className="placeholder-label">Rerun Web Viewer</div>
-          <div className="placeholder-meta">Waiting for server URL</div>
+          {!loaded && (
+            <div className="placeholder-overlay">
+              <div className="placeholder-label">Rerun Web Viewer</div>
+              <div className="placeholder-meta">Connecting to {RERUN_WEB_URL} …</div>
+            </div>
+          )}
+          <iframe
+            src={RERUN_WEB_URL}
+            title="Rerun Web Viewer"
+            onLoad={() => setLoaded(true)}
+            className="rerun-iframe"
+            style={{ opacity: loaded ? 1 : 0 }}
+            allow="fullscreen"
+          />
         </div>
         <div className="panel-metrics">
           <div className="metric">

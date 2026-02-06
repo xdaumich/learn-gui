@@ -5,6 +5,14 @@ todos: []
 isProject: false
 ---
 
+
+## 🐛 Bug Fix #9
+
+- 🎯 **Goal:** Make the Rerun plot fill the viewer window in the embedded iframe
+- 📝 **Description:** Updated `.media-placeholder.is-rerun` styling to stretch grid items, remove padding, and hide overflow, plus added `.rerun-iframe` and `.placeholder-overlay` styles so the iframe fills the panel and the loading overlay sits on top. Updated `RerunPanel` to use the new iframe class. The embedded Rerun plot now fills the full viewer window instead of rendering at a small size.
+- 🧪 **Test:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-sine-fill.png` shows the plot fills the viewer area)
+- 🔄 **Integration / Regression:** `N/A` — no automated regression run for this UI-only tweak
+
 ## ✨ Feature #6
 
 - 🎯 **Goal:** Stream a live sine-wave trajectory in the Rerun Web Viewer embedded in the frontend
