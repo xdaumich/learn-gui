@@ -170,6 +170,36 @@
   position: relative;
 }
 
+.media-placeholder.has-video {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: transparent;
+  align-content: stretch;
+  justify-items: stretch;
+}
+
+.video-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+.stream-status {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  background: rgba(9, 14, 22, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .media-placeholder.is-rerun {
   background: radial-gradient(circle at top, rgba(152, 126, 255, 0.16), transparent 60%);
   border-color: rgba(152, 126, 255, 0.4);

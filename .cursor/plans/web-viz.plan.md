@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #9
+
+- 🎯 **Goal:** Stream the RGB OAK camera into the web viewer via P2P WebRTC
+- 📝 **Description:** Implemented aiortc DepthAI track and offer handling in `server/webrtc.py`, added `/webrtc/offer` FastAPI signaling with peer connection tracking, built a `useWebRTC` hook for H264-preferred negotiation, and wired `VideoPanel` to auto-connect and render the stream with status UI. Added server/client tests for WebRTC negotiation and hook behavior.
+- 🧪 **Test:** `bash scripts/dev.sh` — pass (UI shows Live connection; snapshot saved to `artifacts/webrtc-live-rgb.png`; no camera image without attached OAK device)
+- 🔄 **Integration / Regression:** `make test-server` — pass (6 tests)
+
 ## 🐛 Bug Fix #9
 
 - 🎯 **Goal:** Make the Rerun plot fill the viewer window in the embedded iframe
