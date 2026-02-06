@@ -11,16 +11,16 @@ export default function RerunPanel() {
     <section className="panel rerun-panel">
       <div className="panel-header">
         <div>
-          <h2>Rerun Viewer</h2>
-          <p className="panel-subtitle">Trajectory, pose, and point cloud</p>
+          <h2>Trajectory + 3D Model</h2>
+          <p className="panel-subtitle">Rerun split view</p>
         </div>
-        <span className="panel-chip">iframe</span>
+        <span className="panel-chip">rerun</span>
       </div>
       <div className="panel-body">
         <div className="media-placeholder is-rerun">
           {!loaded && (
             <div className="placeholder-overlay">
-              <div className="placeholder-label">Rerun Web Viewer</div>
+              <div className="placeholder-label">Rerun Split View</div>
               <div className="placeholder-meta">Connecting to {RERUN_WEB_URL} …</div>
             </div>
           )}

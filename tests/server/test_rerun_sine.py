@@ -9,6 +9,34 @@ import urllib.request
 import pytest
 
 
+def test_rerun_bridge_blueprint_layout(monkeypatch):
+    """Ensure the default blueprint splits trajectory + 3D view horizontally."""
+    import rerun.blueprint as rrb
+    import rerun_bridge
+
+    captured: dict[str, object] = {}
+
+    def fake_send_blueprint(blueprint, **_kwargs):
+        captured["blueprint"] = blueprint
+
+    monkeypatch.setattr(rerun_bridge.rr, "send_blueprint", fake_send_blueprint)
+
+    rerun_bridge._send_blueprint()
+
+    blueprint = captured.get("blueprint")
+    assert blueprint is not None
+    assert isinstance(blueprint, rrb.Blueprint)
+    assert blueprint.collapse_panels is True
+
+    root = blueprint.root_container
+    assert isinstance(root, rrb.Horizontal)
+    assert len(root.contents) == 2
+    assert isinstance(root.contents[0], rrb.TimeSeriesView)
+    assert isinstance(root.contents[1], rrb.Spatial3DView)
+    assert root.contents[0].origin == "/trajectory"
+    assert root.contents[1].origin == "/"
+
+
 def test_rerun_bridge_start_and_stream():
     """Start the bridge, stream a few data points, and verify the web viewer is reachable."""
     import rerun_bridge

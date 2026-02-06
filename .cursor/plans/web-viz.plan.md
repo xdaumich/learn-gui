@@ -5,13 +5,19 @@ todos: []
 isProject: false
 ---
 
-
 ## 🐛 Bug Fix #9
 
 - 🎯 **Goal:** Make the Rerun plot fill the viewer window in the embedded iframe
 - 📝 **Description:** Updated `.media-placeholder.is-rerun` styling to stretch grid items, remove padding, and hide overflow, plus added `.rerun-iframe` and `.placeholder-overlay` styles so the iframe fills the panel and the loading overlay sits on top. Updated `RerunPanel` to use the new iframe class. The embedded Rerun plot now fills the full viewer window instead of rendering at a small size.
 - 🧪 **Test:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-sine-fill.png` shows the plot fills the viewer area)
 - 🔄 **Integration / Regression:** `N/A` — no automated regression run for this UI-only tweak
+
+## ✨ Feature #7
+
+- 🎯 **Goal:** Track Luxonis OAK examples as an external submodule
+- 📝 **Description:** Added `external/oak-examples` as a git submodule pointing at `https://github.com/luxonis/oak-examples` to keep the upstream examples synced without vendoring the repo.
+- 🧪 **Test:** `git submodule status external/oak-examples` — not run
+- 🔄 **Integration / Regression:** `git submodule update --init --recursive` — not run
 
 ## ✨ Feature #6
 
@@ -82,3 +88,10 @@ isProject: false
 - 📝 **Description:** Add uv setup instructions, requirements.txt, and track depthai-core, rerun, dexmate-urdf as git submodules under external_dependencies with a README
 - 🧪 **Test:** `N/A` — not run (env setup only)
 - 🔄 **Integration / Regression:** `N/A` — not run
+
+## ✨ Feature #8
+
+- 🎯 **Goal:** Stack the live camera above a split trajectory + 3D model viewer
+- 📝 **Description:** Updated the main grid to a two-row stack, refreshed the Rerun panel copy to reflect the split view, and switched the Rerun blueprint to a horizontal layout with a time-series trajectory on the left and a 3D model view on the right. Captured a refreshed integrated UI snapshot.
+- 🧪 **Test:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (captured `rerun-sine-integrated.png`)
+- 🔄 **Integration / Regression:** `npm --prefix client test` + `uv run --project server --extra dev python -m pytest tests/server/test_rerun_sine.py -v` — pass (1 vitest, 2 pytest)

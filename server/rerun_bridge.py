@@ -75,18 +75,25 @@ def start(
 
 
 def _send_blueprint() -> None:
-    """Push a default blueprint that shows a time-series plot with a 2 s window."""
+    """Push a default blueprint with trajectory + 3D views side-by-side."""
     blueprint = rrb.Blueprint(
-        rrb.TimeSeriesView(
-            origin="/trajectory",
-            name="Live Trajectory",
-            time_ranges=[
-                rrb.VisibleTimeRange(
-                    "wall_time",
-                    start=rrb.TimeRangeBoundary.cursor_relative(seconds=-2.0),
-                    end=rrb.TimeRangeBoundary.cursor_relative(),
-                ),
-            ],
+        rrb.Horizontal(
+            rrb.TimeSeriesView(
+                origin="/trajectory",
+                name="Trajectory",
+                time_ranges=[
+                    rrb.VisibleTimeRange(
+                        "wall_time",
+                        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-2.0),
+                        end=rrb.TimeRangeBoundary.cursor_relative(),
+                    ),
+                ],
+            ),
+            rrb.Spatial3DView(
+                origin="/",
+                name="3D Model",
+            ),
+            column_shares=[0.55, 0.45],
         ),
         collapse_panels=True,
     )
