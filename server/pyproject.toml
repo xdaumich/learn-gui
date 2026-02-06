@@ -1,13 +1,16 @@
 [project]
 name = "learn-gui-server"
 version = "0.1.0"
-requires-python = "==3.10"
+requires-python = "==3.10.*"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "aiortc",
+    "opencv-python",
     "rerun-sdk",
     "pydantic",
+    "depthai",
+    "dexmate_urdf",
 ]
 
 [project.optional-dependencies]
