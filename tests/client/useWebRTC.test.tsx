@@ -13,7 +13,7 @@ class FakeRTCPeerConnection {
   ontrack: ((event: RTCTrackEvent) => void) | null = null;
   onconnectionstatechange: (() => void) | null = null;
 
-  private transceivers: Array<{
+  transceivers: Array<{
     kind: string;
     init?: RTCRtpTransceiverInit;
     setCodecPreferences?: (codecs: RTCRtpCodecCapability[]) => void;
@@ -53,6 +53,18 @@ class FakeRTCPeerConnection {
   }
 }
 
+class FakeMediaStream {
+  private tracks: MediaStreamTrack[];
+
+  constructor(tracks: MediaStreamTrack[] = []) {
+    this.tracks = tracks;
+  }
+
+  getTracks() {
+    return this.tracks;
+  }
+}
+
 function Harness({ onReady }: { onReady: (api: ReturnType<typeof useWebRTC>) => void }) {
   const api = useWebRTC();
   useEffect(() => {
@@ -69,10 +81,17 @@ describe("useWebRTC", () => {
         codecs: [{ mimeType: "video/H264" }],
       }),
     });
-    vi.stubGlobal("MediaStream", class {});
+    vi.stubGlobal("MediaStream", FakeMediaStream);
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({ type: "answer", sdp: "answer-sdp" }),
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/webrtc/cameras")) {
+        return Promise.resolve({
+          json: async () => ["CAM_A", "CAM_B"],
+        });
+      }
+      return Promise.resolve({
+        json: async () => ({ type: "answer", sdp: "answer-sdp" }),
+      });
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -82,6 +101,7 @@ describe("useWebRTC", () => {
     expect(api?.connectionState).toBe("idle");
     await api?.connect();
 
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/webrtc/cameras");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/webrtc/offer",
       expect.objectContaining({
@@ -90,6 +110,15 @@ describe("useWebRTC", () => {
     );
     await waitFor(() => {
       expect(api?.connectionState).toBe("connected");
+    });
+
+    const pc = FakeRTCPeerConnection.instances[0];
+    expect(pc.transceivers).toHaveLength(2);
+    pc.ontrack?.({ track: { id: "track-1" } as MediaStreamTrack, streams: [] } as RTCTrackEvent);
+    pc.ontrack?.({ track: { id: "track-2" } as MediaStreamTrack, streams: [] } as RTCTrackEvent);
+
+    await waitFor(() => {
+      expect(api?.streams).toHaveLength(2);
     });
   });
 });

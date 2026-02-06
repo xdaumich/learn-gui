@@ -8,8 +8,11 @@ const disconnectMock = vi.fn();
 
 vi.mock("../../client/src/hooks/useWebRTC", () => ({
   useWebRTC: () => ({
-    stream: null,
-    connectionState: "connecting",
+    streams: [
+      { id: "stream-1", stream: {} },
+      { id: "stream-2", stream: {} },
+    ],
+    connectionState: "connected",
     connect: connectMock,
     disconnect: disconnectMock,
   }),
@@ -23,7 +26,7 @@ describe("VideoPanel", () => {
       expect(connectMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(screen.getByText(/video stream/i)).toBeVisible();
-    expect(screen.getByText(/connecting/i)).toBeVisible();
+    expect(screen.getByText(/live connection/i)).toBeVisible();
+    expect(screen.getAllByTestId("camera-stream")).toHaveLength(2);
   });
 });

@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #10
+
+- 🎯 **Goal:** Stream all connected OAK cameras in the Live Camera panel grid
+- 📝 **Description:** Added a `/webrtc/cameras` endpoint to expose connected camera sockets, updated WebRTC negotiation to add one video track per camera, and updated the client hook/UI to request per-camera transceivers and render a grid of video tiles with labels. Added server tests for multi-camera negotiation and camera list, plus client tests for multi-track handling and grid rendering.
+- 🧪 **Test:** `npm test -- ../tests/client/useWebRTC.test.tsx` — pass (1 test)
+- 🔄 **Integration / Regression:** `uv run pytest ../tests/server/test_webrtc.py ../tests/server/test_webrtc_endpoint.py ../tests/server/test_webrtc_cameras_endpoint.py -v` — pass (3 tests)
+
 ## ✨ Feature #9
 
 - 🎯 **Goal:** Stream the RGB OAK camera into the web viewer via P2P WebRTC
@@ -102,3 +109,10 @@ isProject: false
 - 📝 **Description:** Updated the main grid to a two-row stack, refreshed the Rerun panel copy to reflect the split view, and switched the Rerun blueprint to a horizontal layout with a time-series trajectory on the left and a 3D model view on the right. Captured a refreshed integrated UI snapshot.
 - 🧪 **Test:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (captured `rerun-sine-integrated.png`)
 - 🔄 **Integration / Regression:** `npm --prefix client test` + `uv run --project server --extra dev python -m pytest tests/server/test_rerun_sine.py -v` — pass (1 vitest, 2 pytest)
+
+## ✨ Feature #9
+
+- 🎯 **Goal:** Load the vega_1p URDF in the Rerun 3D viewer
+- 📝 **Description:** Added vega_1p URDF loading during Rerun bridge startup using the built-in loader, plus tests for path resolution and logging. Captured a Playwright snapshot of the embedded viewer with the model visible.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-1p.png`; Vite dev server already running on `:5173`)

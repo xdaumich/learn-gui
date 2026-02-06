@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Sequence, Tuple
 
 import cv2
 import depthai as dai
@@ -15,24 +15,41 @@ DEFAULT_HEIGHT = 480
 
 _pipeline_lock = threading.Lock()
 _pipeline: Optional[dai.Pipeline] = None
+_pipeline_queues: dict[dai.CameraBoardSocket, dai.DataOutputQueue] = {}
+_pipeline_refcount = 0
 
 
-def _stop_pipeline() -> None:
-    global _pipeline
+def list_camera_sockets() -> list[dai.CameraBoardSocket]:
+    with dai.Device() as device:
+        return list(device.getConnectedCameras())
+
+
+def _stop_pipeline_locked() -> None:
+    global _pipeline, _pipeline_queues, _pipeline_refcount
     if _pipeline is None:
+        _pipeline_queues = {}
+        _pipeline_refcount = 0
         return
     try:
         if _pipeline.isRunning():
             _pipeline.stop()
     finally:
         _pipeline = None
+        _pipeline_queues = {}
+        _pipeline_refcount = 0
+
+
+def _stop_pipeline() -> None:
+    with _pipeline_lock:
+        _stop_pipeline_locked()
 
 
 def _create_rgb_pipeline(
-    width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT
-) -> tuple[dai.Pipeline, dai.DataOutputQueue]:
+    sockets: Sequence[dai.CameraBoardSocket],
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
+) -> tuple[dai.Pipeline, dict[dai.CameraBoardSocket, dai.DataOutputQueue]]:
     pipeline = dai.Pipeline()
-    cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
 
     try:
         platform = pipeline.getDefaultDevice().getPlatformAsString()
@@ -40,27 +57,48 @@ def _create_rgb_pipeline(
         platform = ""
     fps = 30 if platform == "RVC4" else 15
 
-    cam_out = cam.requestOutput((width, height), dai.ImgFrame.Type.NV12, fps=fps)
-    preview_q = cam_out.createOutputQueue(blocking=False, maxSize=4)
-    return pipeline, preview_q
+    queues: dict[dai.CameraBoardSocket, dai.DataOutputQueue] = {}
+    for socket in sockets:
+        cam = pipeline.create(dai.node.Camera).build(socket)
+        cam_out = cam.requestOutput((width, height), dai.ImgFrame.Type.NV12, fps=fps)
+        queues[socket] = cam_out.createOutputQueue(blocking=False, maxSize=4)
+
+    return pipeline, queues
 
 
 def _start_pipeline(
-    width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT
-) -> tuple[dai.Pipeline, dai.DataOutputQueue]:
-    global _pipeline
+    sockets: Sequence[dai.CameraBoardSocket],
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
+) -> dict[dai.CameraBoardSocket, dai.DataOutputQueue]:
+    global _pipeline, _pipeline_queues, _pipeline_refcount
+    if not sockets:
+        raise ValueError("No cameras detected for streaming.")
     with _pipeline_lock:
-        _stop_pipeline()
-        pipeline, preview_q = _create_rgb_pipeline(width=width, height=height)
+        _stop_pipeline_locked()
+        pipeline, queues = _create_rgb_pipeline(sockets, width=width, height=height)
         pipeline.start()
         _pipeline = pipeline
-        return pipeline, preview_q
+        _pipeline_queues = queues
+        _pipeline_refcount = len(queues)
+        return queues
+
+
+def _release_pipeline() -> None:
+    global _pipeline_refcount
+    with _pipeline_lock:
+        if _pipeline_refcount <= 0:
+            return
+        _pipeline_refcount -= 1
+        if _pipeline_refcount == 0:
+            _stop_pipeline_locked()
 
 
 class DepthAIVideoTrack(VideoStreamTrack):
-    def __init__(self, width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT) -> None:
+    def __init__(self, preview_q: dai.DataOutputQueue) -> None:
         super().__init__()
-        self.pipeline, self.preview_q = _start_pipeline(width=width, height=height)
+        self.preview_q = preview_q
+        self._released = False
 
     async def recv(self) -> VideoFrame:
         frame = self.preview_q.get().getCvFrame()
@@ -73,25 +111,39 @@ class DepthAIVideoTrack(VideoStreamTrack):
         return new_frame
 
     def stop(self) -> None:
-        _stop_pipeline()
+        if not self._released:
+            self._released = True
+            _release_pipeline()
         super().stop()
 
 
-TrackFactory = Callable[[], VideoStreamTrack]
+TrackFactory = Callable[[dai.CameraBoardSocket], VideoStreamTrack]
 
 
 async def create_answer(
     sdp: str,
     sdp_type: str,
     *,
+    camera_sockets: Optional[Sequence[dai.CameraBoardSocket]] = None,
     track_factory: Optional[TrackFactory] = None,
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
 ) -> Tuple[RTCSessionDescription, RTCPeerConnection]:
     pc = RTCPeerConnection()
     offer = RTCSessionDescription(sdp=sdp, type=sdp_type)
     await pc.setRemoteDescription(offer)
 
-    track = track_factory() if track_factory is not None else DepthAIVideoTrack()
-    pc.addTrack(track)
+    sockets = list(camera_sockets) if camera_sockets is not None else list_camera_sockets()
+    if not sockets:
+        raise ValueError("No cameras detected for streaming.")
+
+    if track_factory is not None:
+        for socket in sockets:
+            pc.addTrack(track_factory(socket))
+    else:
+        queues = _start_pipeline(sockets, width=width, height=height)
+        for socket in sockets:
+            pc.addTrack(DepthAIVideoTrack(queues[socket]))
 
     await pc.setLocalDescription(await pc.createAnswer())
     return pc.localDescription, pc

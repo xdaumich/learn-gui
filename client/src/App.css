@@ -178,11 +178,43 @@
   justify-items: stretch;
 }
 
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.8rem;
+  width: 100%;
+  height: 100%;
+}
+
+.camera-tile {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(9, 14, 22, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  min-height: 180px;
+}
+
 .video-stream {
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: 16px;
+}
+
+.camera-label {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  background: rgba(9, 14, 22, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .stream-status {

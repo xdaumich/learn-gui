@@ -3,6 +3,7 @@ import asyncio
 from aiortc import RTCPeerConnection, VideoStreamTrack
 from av import VideoFrame
 from fastapi.testclient import TestClient
+import depthai as dai
 
 from main import app
 
@@ -19,13 +20,18 @@ class DummyVideoTrack(VideoStreamTrack):
 
 
 def test_webrtc_offer_endpoint_returns_answer() -> None:
-    app.state.track_factory = DummyVideoTrack
+    app.state.track_factory = lambda _socket: DummyVideoTrack()
+    app.state.camera_sockets = [
+        dai.CameraBoardSocket.CAM_A,
+        dai.CameraBoardSocket.CAM_B,
+    ]
 
     client = TestClient(app)
 
     async def run() -> None:
         offerer = RTCPeerConnection()
-        offerer.addTransceiver("video", direction="recvonly")
+        for _ in app.state.camera_sockets:
+            offerer.addTransceiver("video", direction="recvonly")
         offer = await offerer.createOffer()
         await offerer.setLocalDescription(offer)
 

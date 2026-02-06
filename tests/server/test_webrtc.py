@@ -3,6 +3,8 @@ import asyncio
 from aiortc import RTCPeerConnection, VideoStreamTrack
 from av import VideoFrame
 
+import depthai as dai
+
 import webrtc
 
 
@@ -22,19 +24,25 @@ def test_create_answer_negotiates_video() -> None:
     assert create_answer is not None, "create_answer() is missing from webrtc module"
 
     async def run() -> None:
+        camera_sockets = [
+            dai.CameraBoardSocket.CAM_A,
+            dai.CameraBoardSocket.CAM_B,
+        ]
         offerer = RTCPeerConnection()
-        offerer.addTransceiver("video", direction="recvonly")
+        for _ in camera_sockets:
+            offerer.addTransceiver("video", direction="recvonly")
         offer = await offerer.createOffer()
         await offerer.setLocalDescription(offer)
-
         answer, pc = await create_answer(
             offerer.localDescription.sdp,
             offerer.localDescription.type,
-            track_factory=DummyVideoTrack,
+            camera_sockets=camera_sockets,
+            track_factory=lambda _socket: DummyVideoTrack(),
         )
 
         assert answer.type == "answer"
-        assert "m=video" in answer.sdp
+        video_transceivers = [t for t in pc.getTransceivers() if t.kind == "video"]
+        assert len(video_transceivers) == len(camera_sockets)
 
         await offerer.close()
         await pc.close()

@@ -34,9 +34,11 @@ async def rerun_status():
 @app.post("/webrtc/offer", response_model=SDPAnswer)
 async def webrtc_offer(offer: SDPOffer) -> SDPAnswer:
     track_factory = getattr(app.state, "track_factory", None)
+    camera_sockets = getattr(app.state, "camera_sockets", None)
     answer, pc = await webrtc.create_answer(
         offer.sdp,
         offer.type,
+        camera_sockets=camera_sockets,
         track_factory=track_factory,
     )
 
@@ -51,6 +53,14 @@ async def webrtc_offer(offer: SDPOffer) -> SDPAnswer:
             app.state.peer_connections.discard(pc)
 
     return SDPAnswer(sdp=answer.sdp, type=answer.type)
+
+
+@app.get("/webrtc/cameras")
+async def webrtc_cameras() -> list[str]:
+    camera_sockets = getattr(app.state, "camera_sockets", None)
+    if camera_sockets is None:
+        camera_sockets = webrtc.list_camera_sockets()
+    return [socket.name for socket in camera_sockets]
 
 
 # TODO: add telemetry ingestion routes
