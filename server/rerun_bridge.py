@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import time
+from pathlib import Path
 
 import rerun as rr
 import rerun.blueprint as rrb
@@ -34,6 +35,33 @@ def is_running() -> bool:
 def web_url() -> str | None:
     """Return the web-viewer URL, or *None* if not started."""
     return _web_url
+
+
+def _vega_1p_urdf_path() -> Path:
+    """Return the absolute path to the vega_1p_f5d6 URDF file."""
+    return (
+        Path(__file__).resolve().parents[1]
+        / "external"
+        / "dexmate-urdf"
+        / "robots"
+        / "humanoid"
+        / "vega_1p"
+        / "vega_1p_f5d6.urdf"
+    )
+
+
+def load_vega_1p_model() -> Path | None:
+    """Load the vega_1p URDF model into Rerun, if available."""
+    urdf_path = _vega_1p_urdf_path()
+    if not urdf_path.is_file():
+        print(f"[rerun_bridge] URDF not found: {urdf_path}")
+        return None
+
+    rr.log_file_from_path(urdf_path, static=True)
+    recording = rr.get_global_data_recording()
+    if recording is not None:
+        recording.flush()
+    return urdf_path
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +94,7 @@ def start(
 
     # Send a blueprint with a TimeSeriesView using a rolling 2-sec window
     _send_blueprint()
+    load_vega_1p_model()
 
     _web_url = f"http://localhost:{web_port}"
     _running = True
@@ -76,6 +105,16 @@ def start(
 
 def _send_blueprint() -> None:
     """Push a default blueprint with trajectory + 3D views side-by-side."""
+    robot_root = f"/{_vega_1p_urdf_path().stem}"
+    visual_contents = [
+        f"{robot_root}/visual_geometries/**",
+        f"{robot_root}/joint_transforms/**",
+    ]
+    collision_contents = [
+        f"{robot_root}/collision_geometries/**",
+        f"{robot_root}/joint_transforms/**",
+    ]
+
     blueprint = rrb.Blueprint(
         rrb.Horizontal(
             rrb.TimeSeriesView(
@@ -89,9 +128,18 @@ def _send_blueprint() -> None:
                     ),
                 ],
             ),
-            rrb.Spatial3DView(
-                origin="/",
-                name="3D Model",
+            rrb.Tabs(
+                rrb.Spatial3DView(
+                    origin="/",
+                    name="3D Visual",
+                    contents=visual_contents,
+                ),
+                rrb.Spatial3DView(
+                    origin="/",
+                    name="3D Collision",
+                    contents=collision_contents,
+                ),
+                active_tab=0,
             ),
             column_shares=[0.55, 0.45],
         ),

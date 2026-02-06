@@ -116,3 +116,17 @@ isProject: false
 - 📝 **Description:** Added vega_1p URDF loading during Rerun bridge startup using the built-in loader, plus tests for path resolution and logging. Captured a Playwright snapshot of the embedded viewer with the model visible.
 - 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
 - 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-1p.png`; Vite dev server already running on `:5173`)
+
+## ✨ Feature #10
+
+- 🎯 **Goal:** Toggle visual vs collision meshes in the 3D viewer
+- 📝 **Description:** Replaced the single 3D view with a tabbed container containing Visual and Collision views. Each view filters the opposite geometry root via query expressions, defaulting to the visual tab. Updated blueprint layout tests and captured a visual-tab snapshot.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-visual-tab.png`)
+
+## 🐛 Bug Fix #10
+
+- 🎯 **Goal:** Ensure the visual tab only shows visual meshes
+- 📝 **Description:** Replaced unsupported wildcard query expressions with explicit URDF-root paths so the visual tab includes only `visual_geometries` plus transforms, and the collision tab includes only `collision_geometries` plus transforms. Captured an updated visual-tab snapshot.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-visual-tab-v2.png`)
