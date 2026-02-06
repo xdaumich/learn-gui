@@ -1,32 +1,52 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Unbounded:wght@400;600;700&display=swap");
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  color-scheme: dark;
+  --bg-primary: #070b11;
+  --bg-secondary: #0b1018;
+  --panel: rgba(11, 16, 24, 0.92);
+  --panel-translucent: rgba(7, 11, 17, 0.78);
+  --border: rgba(160, 174, 192, 0.15);
+  --border-strong: rgba(160, 174, 192, 0.35);
+  --accent: #72ffd4;
+  --text-primary: #f5f7ff;
+  --text-muted: rgba(192, 204, 224, 0.72);
+  --font-display: "Unbounded", "IBM Plex Mono", sans-serif;
+  --font-mono: "IBM Plex Mono", "Courier New", monospace;
+}
 
-  color-scheme: light;
-  color: #213547;
-  background-color: #ffffff;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  font-family: var(--font-mono);
+  background: radial-gradient(circle at top, rgba(114, 255, 212, 0.08), transparent 60%),
+    linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   min-height: 100vh;
+  color: var(--text-primary);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 42px 42px;
+  opacity: 0.35;
+  z-index: 0;
 }
 
 #root {
-  width: 100%;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: left;
+  position: relative;
+  z-index: 1;
 }
 
-/* Light theme is default, dark theme removed for consistency */
-
+button {
+  font: inherit;
+}

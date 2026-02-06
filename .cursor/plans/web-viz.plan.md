@@ -18,3 +18,10 @@ isProject: false
 - 📝 **Description:** Build a two-panel WebRTC/Rerun shell with top controls, status pills, and a timeline bar, plus a test-backed UI scaffold.
 - 🧪 **Test:** `npm test` — pass (vitest)
 - 🔄 **Integration / Regression:** `N/A` — not run
+
+## ✨ Feature #3
+
+- 🎯 **Goal:** Document how to run the frontend GUI
+- 📝 **Description:** Run `npm install` then `npm run dev` from the repo root, open the printed local URL in a browser.
+- 🧪 **Test:** `N/A` — not run (documentation only)
+- 🔄 **Integration / Regression:** `N/A` — not run
