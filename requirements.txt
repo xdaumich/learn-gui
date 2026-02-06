@@ -1,3 +1,0 @@
-depthai
-rerun
-dexmate-urdf
