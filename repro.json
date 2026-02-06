@@ -1,0 +1,452 @@
+{
+  "steps": [
+    {
+      "action": {
+        "type": "inc",
+        "by": 1
+      },
+      "timestamp": 1767325029857
+    },
+    {
+      "action": {
+        "type": "inc",
+        "by": 5
+      },
+      "timestamp": 1767325030433
+    },
+    {
+      "action": {
+        "type": "reset"
+      },
+      "timestamp": 1767325030966
+    },
+    {
+      "action": {
+        "type": "inc",
+        "by": 5
+      },
+      "timestamp": 1767325031545
+    },
+    {
+      "action": {
+        "type": "inc",
+        "by": 1
+      },
+      "timestamp": 1767325031999
+    },
+    {
+      "action": {
+        "type": "add_item",
+        "text": "asdfasdf"
+      },
+      "timestamp": 1767325036282
+    },
+    {
+      "action": {
+        "type": "add_item",
+        "text": "ddd"
+      },
+      "timestamp": 1767325038183
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 51
+      },
+      "timestamp": 1767325040598
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 52
+      },
+      "timestamp": 1767325040614
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 55
+      },
+      "timestamp": 1767325040631
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 58
+      },
+      "timestamp": 1767325040647
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 62
+      },
+      "timestamp": 1767325040664
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 66
+      },
+      "timestamp": 1767325040681
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 69
+      },
+      "timestamp": 1767325040697
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 70
+      },
+      "timestamp": 1767325040714
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 71
+      },
+      "timestamp": 1767325040889
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 72
+      },
+      "timestamp": 1767325040897
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 73
+      },
+      "timestamp": 1767325040922
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 75
+      },
+      "timestamp": 1767325040930
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 76
+      },
+      "timestamp": 1767325040956
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 77
+      },
+      "timestamp": 1767325040980
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 76
+      },
+      "timestamp": 1767325041889
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 75
+      },
+      "timestamp": 1767325041897
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 74
+      },
+      "timestamp": 1767325041914
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 73
+      },
+      "timestamp": 1767325041922
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 70
+      },
+      "timestamp": 1767325041931
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 69
+      },
+      "timestamp": 1767325041947
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 66
+      },
+      "timestamp": 1767325041964
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 63
+      },
+      "timestamp": 1767325041980
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 60
+      },
+      "timestamp": 1767325041997
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 57
+      },
+      "timestamp": 1767325042013
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 54
+      },
+      "timestamp": 1767325042030
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 51
+      },
+      "timestamp": 1767325042047
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 47
+      },
+      "timestamp": 1767325042064
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 44
+      },
+      "timestamp": 1767325042080
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 41
+      },
+      "timestamp": 1767325042097
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 39
+      },
+      "timestamp": 1767325042113
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 37
+      },
+      "timestamp": 1767325042130
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 36
+      },
+      "timestamp": 1767325042138
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 35
+      },
+      "timestamp": 1767325042147
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 33
+      },
+      "timestamp": 1767325042164
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 31
+      },
+      "timestamp": 1767325042180
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 29
+      },
+      "timestamp": 1767325042197
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 27
+      },
+      "timestamp": 1767325042214
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 26
+      },
+      "timestamp": 1767325042230
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 25
+      },
+      "timestamp": 1767325042246
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 23
+      },
+      "timestamp": 1767325042263
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 21
+      },
+      "timestamp": 1767325042280
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 20
+      },
+      "timestamp": 1767325042297
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 19
+      },
+      "timestamp": 1767325042314
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 17
+      },
+      "timestamp": 1767325042330
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 16
+      },
+      "timestamp": 1767325042380
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 18
+      },
+      "timestamp": 1767325043397
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 22
+      },
+      "timestamp": 1767325043414
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 27
+      },
+      "timestamp": 1767325043430
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 35
+      },
+      "timestamp": 1767325043455
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 46
+      },
+      "timestamp": 1767325043463
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 59
+      },
+      "timestamp": 1767325043480
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 71
+      },
+      "timestamp": 1767325043497
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 77
+      },
+      "timestamp": 1767325043513
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 85
+      },
+      "timestamp": 1767325043530
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 93
+      },
+      "timestamp": 1767325043547
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 99
+      },
+      "timestamp": 1767325043564
+    },
+    {
+      "action": {
+        "type": "set_slider",
+        "value": 100
+      },
+      "timestamp": 1767325043580
+    }
+  ],
+  "version": "1.0.0"
+}

@@ -1,0 +1,9 @@
+[submodule "external_dependencies/depthai-core"]
+	path = external_dependencies/depthai-core
+	url = https://github.com/luxonis/depthai-core.git
+[submodule "external_dependencies/rerun"]
+	path = external_dependencies/rerun
+	url = https://github.com/rerun-io/rerun.git
+[submodule "external_dependencies/dexmate-urdf"]
+	path = external_dependencies/dexmate-urdf
+	url = https://github.com/dexmate-ai/dexmate-urdf.git
