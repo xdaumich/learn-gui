@@ -1,0 +1,19 @@
+---
+description: Maintain web-viz plan entries for features and bug fixes
+alwaysApply: true
+---
+
+# Web Viz Plan Maintenance
+
+For every feature or bug fix, append an entry to the plan document using this format:
+
+```markdown
+## ✨ Feature #N | 🐛 Bug Fix #N
+
+- 🎯 **Goal:** <what this change achieves>
+- 📝 **Description:** <implementation details and approach>
+- 🧪 **Test:** `<test command>` — <pass / fail + summary>
+- 🔄 **Integration / Regression:** `<command>` — <pass / fail + summary>
+```
+
+Treat `.cursor/plans/web-viz.plan.md` as the source of truth for project work.
