@@ -5,6 +5,34 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #10
+
+- 🎯 **Goal:** Ensure the visual tab only shows visual meshes
+- 📝 **Description:** Replaced unsupported wildcard query expressions with explicit URDF-root paths so the visual tab includes only `visual_geometries` plus transforms, and the collision tab includes only `collision_geometries` plus transforms. Captured an updated visual-tab snapshot.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-visual-tab-v2.png`)
+
+## ✨ Feature #10
+
+- 🎯 **Goal:** Toggle visual vs collision meshes in the 3D viewer
+- 📝 **Description:** Replaced the single 3D view with a tabbed container containing Visual and Collision views. Each view filters the opposite geometry root via query expressions, defaulting to the visual tab. Updated blueprint layout tests and captured a visual-tab snapshot.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-visual-tab.png`)
+
+## ✨ Feature #9
+
+- 🎯 **Goal:** Load the vega_1p URDF in the Rerun 3D viewer
+- 📝 **Description:** Added vega_1p URDF loading during Rerun bridge startup using the built-in loader, plus tests for path resolution and logging. Captured a Playwright snapshot of the embedded viewer with the model visible.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-1p.png`; Vite dev server already running on `:5173`)
+
+## ✨ Feature #8
+
+- 🎯 **Goal:** Stack the live camera above a split trajectory + 3D model viewer
+- 📝 **Description:** Updated the main grid to a two-row stack, refreshed the Rerun panel copy to reflect the split view, and switched the Rerun blueprint to a horizontal layout with a time-series trajectory on the left and a 3D model view on the right. Captured a refreshed integrated UI snapshot.
+- 🧪 **Test:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (captured `rerun-sine-integrated.png`)
+- 🔄 **Integration / Regression:** `npm --prefix client test` + `uv run --project server --extra dev python -m pytest tests/server/test_rerun_sine.py -v` — pass (1 vitest, 2 pytest)
+
 ## ✨ Feature #10
 
 - 🎯 **Goal:** Stream all connected OAK cameras in the Live Camera panel grid
@@ -103,30 +131,3 @@ isProject: false
 - 🧪 **Test:** `N/A` — not run (env setup only)
 - 🔄 **Integration / Regression:** `N/A` — not run
 
-## ✨ Feature #8
-
-- 🎯 **Goal:** Stack the live camera above a split trajectory + 3D model viewer
-- 📝 **Description:** Updated the main grid to a two-row stack, refreshed the Rerun panel copy to reflect the split view, and switched the Rerun blueprint to a horizontal layout with a time-series trajectory on the left and a 3D model view on the right. Captured a refreshed integrated UI snapshot.
-- 🧪 **Test:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (captured `rerun-sine-integrated.png`)
-- 🔄 **Integration / Regression:** `npm --prefix client test` + `uv run --project server --extra dev python -m pytest tests/server/test_rerun_sine.py -v` — pass (1 vitest, 2 pytest)
-
-## ✨ Feature #9
-
-- 🎯 **Goal:** Load the vega_1p URDF in the Rerun 3D viewer
-- 📝 **Description:** Added vega_1p URDF loading during Rerun bridge startup using the built-in loader, plus tests for path resolution and logging. Captured a Playwright snapshot of the embedded viewer with the model visible.
-- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
-- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-1p.png`; Vite dev server already running on `:5173`)
-
-## ✨ Feature #10
-
-- 🎯 **Goal:** Toggle visual vs collision meshes in the 3D viewer
-- 📝 **Description:** Replaced the single 3D view with a tabbed container containing Visual and Collision views. Each view filters the opposite geometry root via query expressions, defaulting to the visual tab. Updated blueprint layout tests and captured a visual-tab snapshot.
-- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
-- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-visual-tab.png`)
-
-## 🐛 Bug Fix #10
-
-- 🎯 **Goal:** Ensure the visual tab only shows visual meshes
-- 📝 **Description:** Replaced unsupported wildcard query expressions with explicit URDF-root paths so the visual tab includes only `visual_geometries` plus transforms, and the collision tab includes only `collision_geometries` plus transforms. Captured an updated visual-tab snapshot.
-- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py -v` — pass (4 tests)
-- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` + `npm run dev` — pass (Playwright snapshot `rerun-vega-visual-tab-v2.png`)

@@ -7,3 +7,6 @@
 [submodule "external/dexmate-urdf"]
 	path = external/dexmate-urdf
 	url = https://github.com/dexmate-ai/dexmate-urdf.git
+[submodule "external/oak-examples"]
+	path = external/oak-examples
+	url = https://github.com/luxonis/oak-examples.git

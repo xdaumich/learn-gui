@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Web Viz Plan Maintenance
 
-For every feature or bug fix, append an entry to the plan document using this format:
+For every feature or bug fix, add a new entry at the top of the plan document (below the frontmatter), not the bottom, using this format:
 
 ```markdown
 ## ✨ Feature #N | 🐛 Bug Fix #N
@@ -18,7 +18,9 @@ For every feature or bug fix, append an entry to the plan document using this fo
 
 ### Field guidance
 
-- **Test** — the exact command a developer would run to verify this specific feature works (e.g. `python scripts/run_camera.py`, `make test-client`, `npm test`). Use `N/A` only for pure documentation or config changes with nothing executable.
-- **Integration / Regression** — the exact command to verify the feature does not break existing functionality. This should run the broadest relevant test suite or smoke-test (e.g. `make test-client`, `python scripts/run_camera.py`). If no integration test exists yet, still list the most relevant runnable command so a developer knows how to verify. Use `N/A` only when truly nothing is runnable.
+- **Python commands** — for this project, run any Python script via `uv run --project server python ...` (not `python ...`).
+
+- **Test** — the exact command a developer would run to verify this specific feature works (e.g. `uv run --project server python scripts/run_camera.py`, `make test-client`, `npm test`). Use `N/A` only for pure documentation or config changes with nothing executable.
+- **Integration / Regression** — the exact command to verify the feature does not break existing functionality. This should run the broadest relevant test suite or smoke-test (e.g. `make test-client`, `uv run --project server python scripts/run_camera.py`). If no integration test exists yet, still list the most relevant runnable command so a developer knows how to verify. Use `N/A` only when truly nothing is runnable.
 
 Treat `.cursor/plans/web-viz.plan.md` as the source of truth for project work.
