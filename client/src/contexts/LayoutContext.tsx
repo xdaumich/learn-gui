@@ -22,21 +22,27 @@ interface LayoutContextValue {
 
 const LayoutContext = createContext<LayoutContextValue | null>(null);
 
-export function useLayout() {
+export function useLayout(): LayoutContextValue {
   const ctx = useContext(LayoutContext);
   if (!ctx) throw new Error("useLayout must be used within LayoutProvider");
   return ctx;
 }
 
 const SPLIT_KEY = "telemetry-split-ratio";
+const SPLIT_MIN = 0.15;
+const SPLIT_MAX = 0.7;
 export const DEFAULT_SPLIT = 0.35;
+
+function clampSplitRatio(value: number): number {
+  return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, value));
+}
 
 function loadSplit(): number {
   try {
     const stored = localStorage.getItem(SPLIT_KEY);
     if (stored) {
       const val = parseFloat(stored);
-      if (val >= 0.15 && val <= 0.7) return val;
+      if (val >= SPLIT_MIN && val <= SPLIT_MAX) return val;
     }
   } catch {
     /* ignore */
@@ -44,7 +50,7 @@ function loadSplit(): number {
   return DEFAULT_SPLIT;
 }
 
-export function LayoutProvider({ children }: { children: ReactNode }) {
+export function LayoutProvider({ children }: { children: ReactNode }): JSX.Element {
   const [mode, setModeRaw] = useState<DisplayMode>("zen");
   const [focusTarget, setFocusTarget] = useState<FocusTarget>(null);
   const [splitRatio, setSplitRatioRaw] = useState(loadSplit);
@@ -65,7 +71,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSplitRatio = useCallback((ratio: number) => {
-    const clamped = Math.max(0.15, Math.min(0.7, ratio));
+    const clamped = clampSplitRatio(ratio);
     setSplitRatioRaw(clamped);
     try {
       localStorage.setItem(SPLIT_KEY, String(clamped));
