@@ -188,7 +188,7 @@ def _log_shoulder_transforms(sin_value: float, cos_value: float) -> None:
         joint = _urdf_tree.get_joint_by_name(joint_name)
         if joint is None:
             continue
-        transform = joint.compute_transform(joint_value, clamp=True)
+        transform = joint.compute_transform(joint_value)
         rr.log(f"{robot_root}/joint_transforms/{joint.name}", transform)
 
 

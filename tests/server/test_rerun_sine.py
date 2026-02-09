@@ -167,11 +167,11 @@ def test_log_shoulder_transforms_logs_joint_paths(monkeypatch):
     class FakeJoint:
         def __init__(self, name: str) -> None:
             self.name = name
-            self.received: tuple[float, bool] | None = None
+            self.received: float | None = None
 
-        def compute_transform(self, value: float, clamp: bool = True) -> str:
-            self.received = (value, clamp)
-            return f"transform:{self.name}:{value}:{clamp}"
+        def compute_transform(self, value: float) -> str:
+            self.received = value
+            return f"transform:{self.name}:{value}"
 
     class FakeTree:
         def __init__(self) -> None:
@@ -194,5 +194,5 @@ def test_log_shoulder_transforms_logs_joint_paths(monkeypatch):
         "/vega_1p_f5d6/joint_transforms/L_arm_j1",
         "/vega_1p_f5d6/joint_transforms/R_arm_j1",
     ]
-    assert tree._joints["L_arm_j1"].received == (0.25, True)
-    assert tree._joints["R_arm_j1"].received == (-0.5, True)
+    assert tree._joints["L_arm_j1"].received == 0.25
+    assert tree._joints["R_arm_j1"].received == -0.5
