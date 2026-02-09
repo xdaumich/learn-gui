@@ -61,6 +61,19 @@ All shortcuts work from **any** mode — no need to be in a specific mode first.
 - **Double-click the resize handle** to reset to the default 35/65 split
 - **Click the floating dot** (bottom-right in Zen) to enter Compact mode
 
+## Recording logs (Zarr)
+
+Click **Rec** in the topbar to start logging the live camera stream alongside
+a synthetic sine trajectory. Click **Stop** to end the run.
+
+By default logs are written to:
+
+```
+data_logs/<run_id>/<camera>.zarr/
+```
+
+Set `DATA_LOG_DIR` to override the output path.
+
 ## External dependencies
 
 Tracked as git submodules under `external/`:

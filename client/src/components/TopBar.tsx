@@ -1,10 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLayout } from "../contexts/LayoutContext";
+import { useRecording } from "../hooks/useRecording";
 import ModeSwitcher from "./ModeSwitcher";
 
 export default function TopBar() {
   const { mode } = useLayout();
   const isZen = mode === "zen";
+  const { phase, runId, toggle: toggleRecording } = useRecording();
   const [hovered, setHovered] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -32,6 +34,19 @@ export default function TopBar() {
   useEffect(() => clearLeaveTimer, [clearLeaveTimer]);
 
   const visible = !isZen || hovered;
+  const isRecording = phase === "recording";
+  const isWorking = phase === "starting" || phase === "stopping";
+  const recordingLabel = isRecording ? "Stop" : "Rec";
+  const recordingStatus =
+    phase === "recording"
+      ? "Recording"
+      : phase === "starting"
+        ? "Starting"
+        : phase === "stopping"
+          ? "Stopping"
+          : phase === "error"
+            ? "Error"
+            : "Idle";
 
   return (
     <>
@@ -61,8 +76,17 @@ export default function TopBar() {
           <button className="control-button" type="button">
             Connect
           </button>
-          <button className="control-button" type="button">
-            Rec
+          <button
+            className={["control-button", isRecording && "is-recording"]
+              .filter(Boolean)
+              .join(" ")}
+            type="button"
+            onClick={toggleRecording}
+            disabled={isWorking}
+            aria-pressed={isRecording}
+            title={runId ? `Recording ${runId}` : "Start recording"}
+          >
+            {recordingLabel}
           </button>
           <button className="control-button" type="button">
             Pause
@@ -73,7 +97,7 @@ export default function TopBar() {
         </div>
         <div className="status-group">
           <span className="status-text">V: --</span>
-          <span className="status-text">R: Idle</span>
+          <span className="status-text">R: {recordingStatus}</span>
           <span className="status-text">S: --</span>
           <ModeSwitcher />
         </div>

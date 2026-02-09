@@ -11,6 +11,8 @@ dependencies = [
     "pydantic",
     "depthai",
     "dexmate_urdf",
+    "zarr",
+    "numcodecs",
 ]
 
 [project.optional-dependencies]

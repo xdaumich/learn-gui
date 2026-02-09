@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #17
+
+- 🎯 **Goal:** Add `docs/infra.md` — architecture overview with readable Mermaid diagrams.
+- 📝 **Description:** Created four focused diagrams: (1) system architecture (HW → Server → Client), (2) client component tree, (3) server module map, (4) WebRTC signaling sequence. Replaced the single overcrowded graph with styled, directional flowcharts and a sequence diagram for better readability.
+- 🧪 **Test:** `N/A` — pure documentation, no executable changes.
+- 🔄 **Integration / Regression:** `N/A` — no code changes.
+
 ## ✨ Feature #16
 
 - 🎯 **Goal:** Start/stop GUI recording and log camera + sine trajectory into Zarr with aligned timesteps.
@@ -57,7 +64,7 @@ isProject: false
 ## 🐛 Bug Fix #12
 
 - 🎯 **Goal:** Make WebRTC camera streaming reliable during `make dev`
-- 📝 **Description:** Avoided reopening the DepthAI device while the streaming pipeline is active (prevents intermittent `X_LINK_*` errors under dev-mode reconnects), reused an active pipeline instead of restarting it per-offer, and removed the `cv2` import from the server process by requesting RGB frames directly.
+- 📝 **Description:** Avoided reopening the DepthAI device while the streaming pipeline is active (prevents intermittent `X_LINK`_* errors under dev-mode reconnects), reused an active pipeline instead of restarting it per-offer, and removed the `cv2` import from the server process by requesting RGB frames directly.
 - 🧪 **Test:** `make dev` — pass (Live Camera shows 3 tiles + “Live connection”; no `InvalidStateError` spam)
 - 🔄 **Integration / Regression:** `make test` — pass (3 vitest, 9 pytest)
 
@@ -134,7 +141,7 @@ isProject: false
 ## 🐛 Bug Fix #7
 
 - 🎯 **Goal:** Remove uv warning about exact Python version pin
-- 📝 **Description:** Updated `server/pyproject.toml` to use `==3.10.*` for `requires-python`, matching uv's guidance to include a patch wildcard instead of an exact minor pin.
+- 📝 **Description:** Updated `server/pyproject.toml` to use `==3.10.`* for `requires-python`, matching uv's guidance to include a patch wildcard instead of an exact minor pin.
 - 🧪 **Test:** `uv run --project server python scripts/run_camera.py` — not run
 - 🔄 **Integration / Regression:** `make test-server` — not run
 

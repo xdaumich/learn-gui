@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Callable, Optional, Sequence, Tuple
 
 import depthai as dai
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
+
+from data_log import RecordingManager
 
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
@@ -117,15 +120,58 @@ def _release_pipeline() -> None:
             _stop_pipeline_locked()
 
 
+def _timestamp_ns(img: dai.ImgFrame) -> int:
+    try:
+        device_ts = img.getTimestampDevice()
+    except Exception:
+        device_ts = None
+
+    try:
+        ts = device_ts or img.getTimestamp()
+    except Exception:
+        ts = None
+
+    if ts is None:
+        return time.time_ns()
+
+    try:
+        return int(ts.total_seconds() * 1e9)
+    except Exception:
+        return time.time_ns()
+
+
 class DepthAIVideoTrack(VideoStreamTrack):
-    def __init__(self, frame_queue: dai.DataOutputQueue) -> None:
+    def __init__(
+        self,
+        frame_queue: dai.DataOutputQueue,
+        *,
+        camera_socket: dai.CameraBoardSocket,
+        recording_manager: RecordingManager | None = None,
+    ) -> None:
         super().__init__()
         self._frame_queue = frame_queue
+        self._camera_socket = camera_socket
+        self._recording_manager = recording_manager
         self._pipeline_released = False
+        self._logging_error: Exception | None = None
 
     async def recv(self) -> VideoFrame:
         img = self._frame_queue.get()
         frame = img.getFrame().reshape((img.getHeight(), img.getWidth(), 3))
+        t_ns = _timestamp_ns(img)
+
+        if self._recording_manager is not None and self._logging_error is None:
+            try:
+                logger = self._recording_manager.get_logger(
+                    self._camera_socket.name,
+                    height=frame.shape[0],
+                    width=frame.shape[1],
+                )
+                if logger is not None:
+                    logger.append(frame, t_ns)
+            except Exception as exc:
+                self._logging_error = exc
+                print(f"[data_log] Failed to log frame: {exc}")
 
         pts, time_base = await self.next_timestamp()
         video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
@@ -149,6 +195,7 @@ async def create_answer(
     *,
     camera_sockets: Optional[Sequence[dai.CameraBoardSocket]] = None,
     track_factory: Optional[TrackFactory] = None,
+    recording_manager: RecordingManager | None = None,
     width: int = DEFAULT_WIDTH,
     height: int = DEFAULT_HEIGHT,
 ) -> Tuple[RTCSessionDescription, RTCPeerConnection]:
@@ -162,8 +209,13 @@ async def create_answer(
 
     if track_factory is None:
         queues = _start_pipeline(sockets, width=width, height=height)
+
         def track_factory(socket: dai.CameraBoardSocket) -> VideoStreamTrack:
-            return DepthAIVideoTrack(queues[socket])
+            return DepthAIVideoTrack(
+                queues[socket],
+                camera_socket=socket,
+                recording_manager=recording_manager,
+            )
 
     for socket in sockets:
         pc.addTrack(track_factory(socket))

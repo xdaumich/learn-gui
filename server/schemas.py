@@ -21,3 +21,10 @@ class ICECandidate(BaseModel):
     candidate: str
     sdp_mid: str | None = None
     sdp_m_line_index: int | None = None
+
+
+class RecordingStatus(BaseModel):
+    active: bool
+    run_id: str | None = None
+    samples: int = 0
+    state: str

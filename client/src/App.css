@@ -153,6 +153,12 @@
   color: var(--bg-primary);
 }
 
+.control-button.is-recording {
+  background: #ff5a5a;
+  color: var(--bg-primary);
+  border-color: rgba(255, 90, 90, 0.6);
+}
+
 /* ── Status ──────────────────────────────────────────────────── */
 
 .status-group {
