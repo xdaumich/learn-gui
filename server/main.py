@@ -46,6 +46,12 @@ async def webrtc_offer(offer: SDPOffer) -> SDPAnswer:
         app.state.peer_connections = set()
     app.state.peer_connections.add(pc)
 
+    @pc.on("connectionstatechange")
+    async def on_connectionstatechange() -> None:
+        if pc.connectionState in ("failed", "closed", "disconnected"):
+            await pc.close()
+            app.state.peer_connections.discard(pc)
+
     @pc.on("iceconnectionstatechange")
     async def on_iceconnectionstatechange() -> None:
         if pc.iceConnectionState == "failed":

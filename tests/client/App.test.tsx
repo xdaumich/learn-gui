@@ -1,17 +1,30 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import App from "../../client/src/App";
 
 describe("App layout", () => {
-  test("renders top controls and panel placeholders", () => {
+  test("starts in zen mode and shows controls in compact mode", () => {
     render(<App />);
 
-    expect(screen.getByRole("button", { name: /connect/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /record/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /pause/i })).toBeVisible();
-    expect(screen.getByRole("button", { name: /live/i })).toBeVisible();
-    expect(screen.getByText(/live camera/i)).toBeVisible();
-    expect(screen.getByText(/trajectory \+ 3d model/i)).toBeVisible();
-    expect(screen.getAllByText(/timeline/i).length).toBeGreaterThan(0);
+    // Zen mode: control buttons exist in DOM (topbar rendered but off-screen)
+    expect(
+      screen.getByRole("button", { name: /connect/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /pause/i }),
+    ).toBeInTheDocument();
+
+    // Content placeholders visible in zen
+    expect(screen.getByText(/video stream/i)).toBeInTheDocument();
+
+    // Floating dot visible in zen mode
+    expect(screen.getByTitle(/click or press z/i)).toBeInTheDocument();
+
+    // Switch to compact mode via Z key
+    fireEvent.keyDown(window, { key: "z" });
+
+    // Compact mode: panel header chips visible
+    expect(screen.getByText("CAM")).toBeInTheDocument();
+    expect(screen.getByText("RERUN")).toBeInTheDocument();
   });
 });

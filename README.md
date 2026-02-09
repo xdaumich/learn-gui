@@ -16,7 +16,7 @@ scripts/         Dev scripts (setup, dev, lint)
 
 ```bash
 make setup       # install all deps (npm + uv + submodules)
-make dev         # start client + server concurrently
+make dev         # start client + server + rerun demo
 make test        # run all tests
 ```
 
@@ -27,6 +27,7 @@ make test-client   # vitest only
 make test-server   # pytest only
 make lint          # ruff + tsc
 make clean         # remove build artifacts
+uv run --project server python scripts/run_camera.py  # local OAK camera windows
 ```
 
 ## External dependencies

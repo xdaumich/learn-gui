@@ -1,34 +1,40 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import { useWebRTC } from "../hooks/useWebRTC";
+import { useLayout } from "../contexts/LayoutContext";
 
 export default function VideoPanel() {
+  const { mode, focusPanel, exitFocus, focusTarget } = useLayout();
+  const isZen = mode === "zen";
+  const isFocused = mode === "focus" && focusTarget === "camera";
   const { streams, connectionState, connect, disconnect } = useWebRTC();
   const hasStreams = streams.length > 0;
 
   const statusText = useMemo(() => {
     switch (connectionState) {
       case "connected":
-        return "Live connection";
+        return "Live";
       case "connecting":
-        return "Connecting...";
+        return "Connecting…";
       case "failed":
-        return "Connection failed";
+        return "Failed";
       case "disconnected":
         return "Disconnected";
       case "closed":
         return "Closed";
       case "new":
-        return "Starting...";
+        return "Starting…";
       case "idle":
         return "Idle";
       default:
-        return "No peer connection";
+        return "No peer";
     }
   }, [connectionState]);
 
   useEffect(() => {
-    void connect();
+    void connect().catch(() => {
+      // Keep UI stable; connection errors are reflected via connectionState.
+    });
     return () => {
       disconnect();
     };
@@ -47,48 +53,53 @@ export default function VideoPanel() {
   );
 
   return (
-    <section className="panel video-panel">
-      <div className="panel-header">
-        <div>
-          <h2>Live Camera</h2>
-          <p className="panel-subtitle">WebRTC low-latency feed</p>
-        </div>
-        <span className="panel-chip">H264</span>
-      </div>
-      <div className="panel-body">
-        <div className={`media-placeholder ${hasStreams ? "has-video" : ""}`}>
-          {hasStreams ? (
-            <>
-              <div className="camera-grid">{tiles}</div>
-              <div className="stream-status">{statusText}</div>
-            </>
-          ) : (
-            <>
-              <div className="placeholder-label">Video stream</div>
-              <div className="placeholder-meta">{statusText}</div>
-            </>
-          )}
-        </div>
-        <div className="panel-metrics">
-          <div className="metric">
-            <span className="metric-label">Capture Time</span>
-            <span className="metric-value">--:--:--</span>
+    <section className={`video-panel ${isZen ? "panel--zen" : "panel"}`}>
+      {!isZen && (
+        <div className="compact-header">
+          <div className="compact-header__left">
+            <span className="compact-chip">CAM</span>
+            <span className="compact-label">H264</span>
           </div>
-          <div className="metric">
-            <span className="metric-label">Frame Rate</span>
-            <span className="metric-value">-- fps</span>
+          <div className="compact-header__metrics">
+            <span>--:--:--</span>
+            <span className="metric-divider">|</span>
+            <span>-- fps</span>
+            <span className="metric-divider">|</span>
+            <span>-- ms</span>
           </div>
-          <div className="metric">
-            <span className="metric-label">Latency</span>
-            <span className="metric-value">-- ms</span>
-          </div>
+          <button
+            className="maximize-btn"
+            onClick={() => (isFocused ? exitFocus() : focusPanel("camera"))}
+            type="button"
+            title={isFocused ? "Restore (Esc)" : "Focus (1)"}
+          >
+            {isFocused ? "\u2921" : "\u2922"}
+          </button>
         </div>
+      )}
+      <div className={`media-placeholder ${hasStreams ? "has-video" : ""}`}>
+        {hasStreams ? (
+          <>
+            <div className="camera-grid">{tiles}</div>
+            <div className="stream-status">{statusText}</div>
+          </>
+        ) : (
+          <>
+            <div className="placeholder-label">Video stream</div>
+            <div className="placeholder-meta">{statusText}</div>
+          </>
+        )}
       </div>
     </section>
   );
 }
 
-function VideoTile({ stream, label }: { stream: MediaStream; label: string }) {
+type VideoTileProps = {
+  stream: MediaStream;
+  label: string;
+};
+
+function VideoTile({ stream, label }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {

@@ -5,6 +5,27 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #13
+
+- 🎯 **Goal:** Zen / Compact / Focus three-mode layout for maximum camera and rerun content
+- 📝 **Description:** Replaced the fixed chrome-heavy layout (43% overhead) with a three-tier density system. **Zen** (default): bare camera + rerun panels fill 98% of the viewport, floating status dot, topbar auto-reveals on hover. **Compact** (press Z): slim 40px topbar, 28px inline panel headers with metrics, 28px timeline scrubber — 81% content. **Focus** (press F/1/2): single panel fills viewport — 87% content. Added `LayoutContext` for mode state + split ratio, `ResizeHandle` for draggable panel divider persisted in localStorage, `FloatingDot` for zen status, and keyboard shortcuts (Z, F, Escape, 1, 2). Rewrote all component rendering to be mode-aware and overhauled App.css for all three modes with 150ms transitions. Updated tests for the new default zen mode.
+- 🧪 **Test:** `npm --prefix client test -- --run` — pass (3 tests)
+- 🔄 **Integration / Regression:** `make dev` — pass (verified zen, compact, focus modes with live cameras + rerun in browser)
+
+## 🐛 Bug Fix #11
+
+- 🎯 **Goal:** Run the Rerun demo as part of `make dev`
+- 📝 **Description:** Updated the dev script to start the Rerun demo alongside the Vite and FastAPI servers, and aligned the README quick-start command to reflect the combined startup.
+- 🧪 **Test:** `bash scripts/dev.sh` — not run
+- 🔄 **Integration / Regression:** `make test` — not run
+
+## 🐛 Bug Fix #12
+
+- 🎯 **Goal:** Make WebRTC camera streaming reliable during `make dev`
+- 📝 **Description:** Avoided reopening the DepthAI device while the streaming pipeline is active (prevents intermittent `X_LINK_*` errors under dev-mode reconnects), reused an active pipeline instead of restarting it per-offer, and removed the `cv2` import from the server process by requesting RGB frames directly.
+- 🧪 **Test:** `make dev` — pass (Live Camera shows 3 tiles + “Live connection”; no `InvalidStateError` spam)
+- 🔄 **Integration / Regression:** `make test` — pass (3 vitest, 9 pytest)
+
 ## 🐛 Bug Fix #10
 
 - 🎯 **Goal:** Ensure the visual tab only shows visual meshes

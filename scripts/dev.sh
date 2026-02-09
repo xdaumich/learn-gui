@@ -10,4 +10,7 @@ echo "==> Starting client (Vite)..."
 echo "==> Starting server (FastAPI)..."
 (cd server && uv run uvicorn main:app --reload --port 8000) &
 
+echo "==> Starting Rerun demo (trajectory + 3D model)..."
+uv run --project server python scripts/run_rerun_demo.py &
+
 wait

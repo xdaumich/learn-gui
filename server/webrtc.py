@@ -5,7 +5,6 @@ from __future__ import annotations
 import threading
 from typing import Callable, Optional, Sequence, Tuple
 
-import cv2
 import depthai as dai
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 from av import VideoFrame
@@ -20,23 +19,34 @@ _pipeline_refcount = 0
 
 
 def list_camera_sockets() -> list[dai.CameraBoardSocket]:
+    # When the streaming pipeline is active, avoid opening a second connection to the device.
+    # On some platforms / firmware states this can fail with X_LINK_* errors.
+    with _pipeline_lock:
+        if _pipeline is not None and _pipeline_queues:
+            return list(_pipeline_queues.keys())
+
     with dai.Device() as device:
         return list(device.getConnectedCameras())
 
 
-def _stop_pipeline_locked() -> None:
+def _reset_pipeline_state_locked() -> None:
     global _pipeline, _pipeline_queues, _pipeline_refcount
-    if _pipeline is None:
-        _pipeline_queues = {}
-        _pipeline_refcount = 0
+    _pipeline = None
+    _pipeline_queues = {}
+    _pipeline_refcount = 0
+
+
+def _stop_pipeline_locked() -> None:
+    global _pipeline
+    pipeline = _pipeline
+    if pipeline is None:
+        _reset_pipeline_state_locked()
         return
     try:
-        if _pipeline.isRunning():
-            _pipeline.stop()
+        if pipeline.isRunning():
+            pipeline.stop()
     finally:
-        _pipeline = None
-        _pipeline_queues = {}
-        _pipeline_refcount = 0
+        _reset_pipeline_state_locked()
 
 
 def _stop_pipeline() -> None:
@@ -60,7 +70,8 @@ def _create_rgb_pipeline(
     queues: dict[dai.CameraBoardSocket, dai.DataOutputQueue] = {}
     for socket in sockets:
         cam = pipeline.create(dai.node.Camera).build(socket)
-        cam_out = cam.requestOutput((width, height), dai.ImgFrame.Type.NV12, fps=fps)
+        # Ask the device for interleaved RGB to avoid importing OpenCV (cv2) in the server process.
+        cam_out = cam.requestOutput((width, height), dai.ImgFrame.Type.RGB888i, fps=fps)
         queues[socket] = cam_out.createOutputQueue(blocking=False, maxSize=4)
 
     return pipeline, queues
@@ -75,6 +86,18 @@ def _start_pipeline(
     if not sockets:
         raise ValueError("No cameras detected for streaming.")
     with _pipeline_lock:
+        sockets_set = set(sockets)
+        # If the pipeline is already running for the same set of sockets, reuse it and
+        # bump the refcount for the additional tracks we're about to create.
+        if (
+            _pipeline is not None
+            and _pipeline_queues
+            and _pipeline.isRunning()
+            and set(_pipeline_queues.keys()) == sockets_set
+        ):
+            _pipeline_refcount += len(sockets)
+            return _pipeline_queues
+
         _stop_pipeline_locked()
         pipeline, queues = _create_rgb_pipeline(sockets, width=width, height=height)
         pipeline.start()
@@ -95,24 +118,24 @@ def _release_pipeline() -> None:
 
 
 class DepthAIVideoTrack(VideoStreamTrack):
-    def __init__(self, preview_q: dai.DataOutputQueue) -> None:
+    def __init__(self, frame_queue: dai.DataOutputQueue) -> None:
         super().__init__()
-        self.preview_q = preview_q
-        self._released = False
+        self._frame_queue = frame_queue
+        self._pipeline_released = False
 
     async def recv(self) -> VideoFrame:
-        frame = self.preview_q.get().getCvFrame()
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = self._frame_queue.get()
+        frame = img.getFrame().reshape((img.getHeight(), img.getWidth(), 3))
 
         pts, time_base = await self.next_timestamp()
-        new_frame = VideoFrame.from_ndarray(frame, format="rgb24")
-        new_frame.pts = pts
-        new_frame.time_base = time_base
-        return new_frame
+        video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
+        video_frame.pts = pts
+        video_frame.time_base = time_base
+        return video_frame
 
     def stop(self) -> None:
-        if not self._released:
-            self._released = True
+        if not self._pipeline_released:
+            self._pipeline_released = True
             _release_pipeline()
         super().stop()
 
@@ -137,13 +160,13 @@ async def create_answer(
     if not sockets:
         raise ValueError("No cameras detected for streaming.")
 
-    if track_factory is not None:
-        for socket in sockets:
-            pc.addTrack(track_factory(socket))
-    else:
+    if track_factory is None:
         queues = _start_pipeline(sockets, width=width, height=height)
-        for socket in sockets:
-            pc.addTrack(DepthAIVideoTrack(queues[socket]))
+        def track_factory(socket: dai.CameraBoardSocket) -> VideoStreamTrack:
+            return DepthAIVideoTrack(queues[socket])
+
+    for socket in sockets:
+        pc.addTrack(track_factory(socket))
 
     await pc.setLocalDescription(await pc.createAnswer())
     return pc.localDescription, pc

@@ -101,7 +101,10 @@ describe("useWebRTC", () => {
     expect(api?.connectionState).toBe("idle");
     await api?.connect();
 
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/webrtc/cameras");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/webrtc/cameras",
+      expect.objectContaining({ signal: expect.anything() }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/webrtc/offer",
       expect.objectContaining({
