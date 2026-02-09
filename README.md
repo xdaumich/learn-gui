@@ -30,6 +30,35 @@ make clean         # remove build artifacts
 uv run --project server python scripts/run_camera.py  # local OAK camera windows
 ```
 
+## GUI usage
+
+The viewer opens in **Zen mode** by default — camera and Rerun panels fill the
+screen with no controls visible. Three display modes let you trade information
+density for content area:
+
+| Mode        | Content | Description                                      |
+|-------------|---------|--------------------------------------------------|
+| **Zen**     | 98%     | Bare panels, floating status dot, no chrome       |
+| **Compact** | 81%     | Slim topbar, inline metrics, timeline scrubber    |
+| **Focus**   | 87%     | Single panel fills the viewport                   |
+
+### Keyboard shortcuts
+
+| Key     | Action                                        |
+|---------|-----------------------------------------------|
+| `Z`     | Toggle Zen ↔ Compact                          |
+| `F`     | Toggle Focus on Rerun (from Compact)          |
+| `1`     | Focus Camera panel (from Compact)             |
+| `2`     | Focus Rerun panel (from Compact)              |
+| `Esc`   | Exit Focus → Compact, or Compact → Zen        |
+
+### Mouse interactions
+
+- **Hover top edge** in Zen mode to temporarily reveal the topbar
+- **Drag the resize handle** between panels to adjust the split (persisted)
+- **Double-click the resize handle** to reset to the default 35/65 split
+- **Click the floating dot** (bottom-right in Zen) to enter Compact mode
+
 ## External dependencies
 
 Tracked as git submodules under `external/`:
