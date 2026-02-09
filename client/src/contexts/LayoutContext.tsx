@@ -15,7 +15,6 @@ interface LayoutContextValue {
   focusTarget: FocusTarget;
   splitRatio: number;
   setMode: (mode: DisplayMode) => void;
-  toggleZen: () => void;
   focusPanel: (target: "camera" | "rerun") => void;
   exitFocus: () => void;
   setSplitRatio: (ratio: number) => void;
@@ -55,11 +54,6 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     if (m !== "focus") setFocusTarget(null);
   }, []);
 
-  const toggleZen = useCallback(() => {
-    setModeRaw((prev) => (prev === "zen" ? "compact" : "zen"));
-    setFocusTarget(null);
-  }, []);
-
   const focusPanel = useCallback((target: "camera" | "rerun") => {
     setModeRaw("focus");
     setFocusTarget(target);
@@ -80,7 +74,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — every key works from every mode
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       const el = e.target as HTMLElement;
@@ -94,28 +88,38 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       switch (e.key.toLowerCase()) {
         case "z":
           e.preventDefault();
-          toggleZen();
+          // Z always goes to zen, unless already zen → compact
+          if (mode === "zen") setMode("compact");
+          else setMode("zen");
           break;
         case "f":
           e.preventDefault();
-          if (mode === "compact") focusPanel("rerun");
-          else if (mode === "focus") exitFocus();
+          // F toggles focus on rerun from any mode
+          if (mode === "focus" && focusTarget === "rerun") exitFocus();
+          else focusPanel("rerun");
           break;
         case "escape":
+          // Esc goes one level back: focus → compact → zen
           if (mode === "focus") exitFocus();
           else if (mode === "compact") setMode("zen");
           break;
         case "1":
-          if (mode === "compact") focusPanel("camera");
+          e.preventDefault();
+          // 1 toggles focus on camera from any mode
+          if (mode === "focus" && focusTarget === "camera") exitFocus();
+          else focusPanel("camera");
           break;
         case "2":
-          if (mode === "compact") focusPanel("rerun");
+          e.preventDefault();
+          // 2 toggles focus on rerun from any mode
+          if (mode === "focus" && focusTarget === "rerun") exitFocus();
+          else focusPanel("rerun");
           break;
       }
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [mode, toggleZen, focusPanel, exitFocus, setMode]);
+  }, [mode, focusTarget, focusPanel, exitFocus, setMode]);
 
   return (
     <LayoutContext.Provider
@@ -124,7 +128,6 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
         focusTarget,
         splitRatio,
         setMode,
-        toggleZen,
         focusPanel,
         exitFocus,
         setSplitRatio,

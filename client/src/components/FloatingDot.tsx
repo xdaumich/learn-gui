@@ -1,17 +1,30 @@
+import { useState } from "react";
 import { useLayout } from "../contexts/LayoutContext";
+import ModeSwitcher from "./ModeSwitcher";
 
 export default function FloatingDot() {
-  const { toggleZen } = useLayout();
+  const { setMode } = useLayout();
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <button
-      className="floating-dot"
-      onClick={toggleZen}
-      title="V: Disconnected  R: Idle  00:00:00 — Click or press Z for controls"
-      type="button"
+    <div
+      className={`floating-dot-container${expanded ? " floating-dot-container--expanded" : ""}`}
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
     >
-      <span className="dot-indicator" />
-      <span className="dot-label">Live</span>
-    </button>
+      {expanded ? (
+        <ModeSwitcher />
+      ) : (
+        <button
+          className="floating-dot"
+          onClick={() => setMode("compact")}
+          title="V: Disconnected  R: Idle  00:00:00 — Click or press Z for controls"
+          type="button"
+        >
+          <span className="dot-indicator" />
+          <span className="dot-label">Live</span>
+        </button>
+      )}
+    </div>
   );
 }

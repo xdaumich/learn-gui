@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #15
+
+- 🎯 **Goal:** Fix non-native mode switching — all shortcuts now work from any mode, plus a visible ModeSwitcher UI
+- 📝 **Description:** Rewrote `LayoutContext` keyboard handler so `Z`, `F`, `1`, `2`, and `Esc` all work from every mode (previously `F`/`1`/`2` were restricted to compact-only and `Z` broke from focus). Removed the old `toggleZen` helper and `zen-toggle` button. Created a new `ModeSwitcher` segmented pill component with a sliding CSS indicator that shows all three modes (Zen / Compact / Focus) as clickable radio buttons with keyboard-hint badges. Integrated into TopBar (always visible) and FloatingDot (expands on hover in zen mode). Updated README keyboard shortcuts table. Cleaned up unused `.zen-toggle` CSS.
+- 🧪 **Test:** `npm --prefix client test -- --run` — pass (3 tests)
+- 🔄 **Integration / Regression:** `npm --prefix client test -- --run` — pass (3 tests, all existing assertions unchanged)
+
 ## ✨ Feature #14
 
 - 🎯 **Goal:** Simplify and refine the three-mode layout system for clarity, consistency, and maintainability

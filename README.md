@@ -44,13 +44,15 @@ density for content area:
 
 ### Keyboard shortcuts
 
-| Key     | Action                                        |
-|---------|-----------------------------------------------|
-| `Z`     | Toggle Zen ↔ Compact                          |
-| `F`     | Toggle Focus on Rerun (from Compact)          |
-| `1`     | Focus Camera panel (from Compact)             |
-| `2`     | Focus Rerun panel (from Compact)              |
-| `Esc`   | Exit Focus → Compact, or Compact → Zen        |
+All shortcuts work from **any** mode — no need to be in a specific mode first.
+
+| Key     | Action                                               |
+|---------|------------------------------------------------------|
+| `Z`     | Toggle Zen ↔ Compact (from Focus goes to Zen)        |
+| `F`     | Toggle Focus on Rerun (from any mode)                |
+| `1`     | Toggle Focus on Camera (from any mode)               |
+| `2`     | Toggle Focus on Rerun (from any mode)                |
+| `Esc`   | Go back one level: Focus → Compact → Zen             |
 
 ### Mouse interactions
 

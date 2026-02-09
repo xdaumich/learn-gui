@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLayout } from "../contexts/LayoutContext";
+import ModeSwitcher from "./ModeSwitcher";
 
 export default function TopBar() {
-  const { mode, toggleZen } = useLayout();
+  const { mode } = useLayout();
   const isZen = mode === "zen";
   const [hovered, setHovered] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,16 +75,7 @@ export default function TopBar() {
           <span className="status-text">V: --</span>
           <span className="status-text">R: Idle</span>
           <span className="status-text">S: --</span>
-          {!isZen && (
-            <button
-              className="zen-toggle"
-              onClick={toggleZen}
-              type="button"
-              title="Zen mode (Z)"
-            >
-              Z
-            </button>
-          )}
+          <ModeSwitcher />
         </div>
       </header>
     </>
