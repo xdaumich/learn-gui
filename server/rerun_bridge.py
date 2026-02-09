@@ -25,6 +25,8 @@ DEFAULT_WEB_PORT = 9090
 # ---------------------------------------------------------------------------
 _running = False
 _web_url: str | None = None
+_urdf_tree: rr.urdf.UrdfTree | None = None
+_robot_root: str | None = None
 
 
 def is_running() -> bool:
@@ -52,12 +54,20 @@ def _vega_1p_urdf_path() -> Path:
 
 def load_vega_1p_model() -> Path | None:
     """Load the vega_1p URDF model into Rerun, if available."""
+    global _robot_root, _urdf_tree  # noqa: PLW0603
+
     urdf_path = _vega_1p_urdf_path()
     if not urdf_path.is_file():
         print(f"[rerun_bridge] URDF not found: {urdf_path}")
+        _urdf_tree = None
+        _robot_root = None
         return None
 
+    _robot_root = f"/{urdf_path.stem}"
     rr.log_file_from_path(urdf_path, static=True)
+    _urdf_tree = rr.urdf.UrdfTree.from_file_path(
+        urdf_path, entity_path_prefix=_robot_root
+    )
     recording = rr.get_global_data_recording()
     if recording is not None:
         recording.flush()
@@ -166,6 +176,22 @@ def _log_series_style() -> None:
     )
 
 
+def _log_shoulder_transforms(sin_value: float, cos_value: float) -> None:
+    """Log joint transforms for the shoulder joints if the URDF is loaded."""
+    if _urdf_tree is None:
+        return
+
+    robot_root = _robot_root or f"/{_vega_1p_urdf_path().stem}"
+    joint_updates = (("L_arm_j1", sin_value), ("R_arm_j1", cos_value))
+
+    for joint_name, joint_value in joint_updates:
+        joint = _urdf_tree.get_joint_by_name(joint_name)
+        if joint is None:
+            continue
+        transform = joint.compute_transform(joint_value, clamp=True)
+        rr.log(f"{robot_root}/joint_transforms/{joint.name}", transform)
+
+
 # ---------------------------------------------------------------------------
 # Streaming
 # ---------------------------------------------------------------------------
@@ -188,8 +214,11 @@ def stream_sine_wave(*, hz: float = 20.0, duration: float | None = None) -> None
     while True:
         t = time.time()
         rr.set_time("wall_time", timestamp=t)
-        rr.log("trajectory/sin", rr.Scalars(math.sin(t * 2.0 * math.pi)))
-        rr.log("trajectory/cos", rr.Scalars(math.cos(t * 2.0 * math.pi)))
+        sin_value = math.sin(t * 2.0 * math.pi)
+        cos_value = math.cos(t * 2.0 * math.pi)
+        rr.log("trajectory/sin", rr.Scalars(sin_value))
+        rr.log("trajectory/cos", rr.Scalars(cos_value))
+        _log_shoulder_transforms(sin_value, cos_value)
 
         if duration is not None and (t - t0) >= duration:
             break

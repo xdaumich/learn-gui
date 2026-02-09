@@ -131,6 +131,18 @@ def test_load_vega_1p_model_logs_urdf(monkeypatch, tmp_path):
     monkeypatch.setattr(
         rerun_bridge.rr, "get_global_data_recording", lambda: FakeRecording()
     )
+    sentinel_tree = object()
+
+    def fake_from_file_path(path, entity_path_prefix=None):
+        calls["tree_path"] = path
+        calls["tree_prefix"] = entity_path_prefix
+        return sentinel_tree
+
+    monkeypatch.setattr(
+        rerun_bridge.rr.urdf.UrdfTree,
+        "from_file_path",
+        staticmethod(fake_from_file_path),
+    )
 
     result = rerun_bridge.load_vega_1p_model()
 
@@ -138,3 +150,49 @@ def test_load_vega_1p_model_logs_urdf(monkeypatch, tmp_path):
     assert calls["path"] == fake_urdf
     assert calls["static"] is True
     assert calls["flush"] is True
+    assert calls["tree_path"] == fake_urdf
+    assert calls["tree_prefix"] == f"/{fake_urdf.stem}"
+    assert rerun_bridge._urdf_tree is sentinel_tree
+    assert rerun_bridge._robot_root == f"/{fake_urdf.stem}"
+
+
+def test_log_shoulder_transforms_logs_joint_paths(monkeypatch):
+    import rerun_bridge
+
+    logged: list[tuple[str, object]] = []
+
+    def fake_log(path, payload, **_kwargs):
+        logged.append((path, payload))
+
+    class FakeJoint:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.received: tuple[float, bool] | None = None
+
+        def compute_transform(self, value: float, clamp: bool = True) -> str:
+            self.received = (value, clamp)
+            return f"transform:{self.name}:{value}:{clamp}"
+
+    class FakeTree:
+        def __init__(self) -> None:
+            self._joints = {
+                "L_arm_j1": FakeJoint("L_arm_j1"),
+                "R_arm_j1": FakeJoint("R_arm_j1"),
+            }
+
+        def get_joint_by_name(self, name: str) -> FakeJoint | None:
+            return self._joints.get(name)
+
+    tree = FakeTree()
+    monkeypatch.setattr(rerun_bridge, "_urdf_tree", tree, raising=False)
+    monkeypatch.setattr(rerun_bridge, "_robot_root", "/vega_1p_f5d6", raising=False)
+    monkeypatch.setattr(rerun_bridge.rr, "log", fake_log)
+
+    rerun_bridge._log_shoulder_transforms(0.25, -0.5)
+
+    assert [entry[0] for entry in logged] == [
+        "/vega_1p_f5d6/joint_transforms/L_arm_j1",
+        "/vega_1p_f5d6/joint_transforms/R_arm_j1",
+    ]
+    assert tree._joints["L_arm_j1"].received == (0.25, True)
+    assert tree._joints["R_arm_j1"].received == (-0.5, True)

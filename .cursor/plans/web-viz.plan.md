@@ -5,6 +5,20 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #16
+
+- 🎯 **Goal:** Start/stop GUI recording and log camera + sine trajectory into Zarr with aligned timesteps.
+- 📝 **Description:** Added a Zarr episode logger and recording manager on the server to append `rgb`, `t_ns`, and `ee_pose` per frame with shared timestamps. Wired `/recording/start`, `/recording/stop`, and `/recording/status`, and passed the recording manager into WebRTC tracks for per-frame logging. Connected the TopBar Rec button to the recording endpoints with live status text and a recording style. Documented default `data_logs/<run_id>/<camera>.zarr` output plus `DATA_LOG_DIR` override.
+- 🧪 **Test:** `cd server && uv run pytest ../tests/server -v` — pass (12 tests)
+- 🔄 **Integration / Regression:** `make test` — not run
+
+## ✨ Feature #15
+
+- 🎯 **Goal:** Animate the vega_1p shoulder joints from the live sine/cos trajectory
+- 📝 **Description:** Cached the URDF tree on load, added joint-transform logging for `L_arm_j1` and `R_arm_j1`, and wired the sine/cos stream to emit shoulder transforms so the arms animate in the 3D view alongside the trajectory plot. Added tests for joint transform logging and URDF tree caching.
+- 🧪 **Test:** `uv run --project server python -m pytest tests/server/test_rerun_sine.py` — pass (5 tests)
+- 🔄 **Integration / Regression:** `uv run --project server python scripts/run_rerun_demo.py` — not run (manual, long-running)
+
 ## 🐛 Bug Fix #15
 
 - 🎯 **Goal:** Fix non-native mode switching — all shortcuts now work from any mode, plus a visible ModeSwitcher UI
