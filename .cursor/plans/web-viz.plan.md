@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #17
+
+- 🎯 **Goal:** Keep macOS `.DS_Store` out of the dexmate-urdf submodule.
+- 📝 **Description:** Added a submodule `.gitignore` that excludes `.DS_Store` files so the submodule stays clean.
+- 🧪 **Test:** `git -C external/dexmate-urdf status -uall` — not run
+- 🔄 **Integration / Regression:** `git submodule status external/dexmate-urdf` — not run
+
 ## 🐛 Bug Fix #16
 
 - 🎯 **Goal:** Ignore local `data_logs` artifacts in git status.
