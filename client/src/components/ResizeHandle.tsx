@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { useLayout } from "../contexts/LayoutContext";
+import { useLayout, DEFAULT_SPLIT } from "../contexts/LayoutContext";
 
 export default function ResizeHandle() {
   const { setSplitRatio } = useLayout();
@@ -31,7 +31,7 @@ export default function ResizeHandle() {
   }, []);
 
   const onDoubleClick = useCallback(() => {
-    setSplitRatio(0.35);
+    setSplitRatio(DEFAULT_SPLIT);
   }, [setSplitRatio]);
 
   return (

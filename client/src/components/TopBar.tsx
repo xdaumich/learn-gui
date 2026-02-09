@@ -42,7 +42,13 @@ export default function TopBar() {
         />
       )}
       <header
-        className={`top-bar ${isZen ? "top-bar--zen" : ""} ${visible ? "top-bar--visible" : ""}`}
+        className={[
+          "top-bar",
+          isZen && "top-bar--zen",
+          visible && "top-bar--visible",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         onMouseEnter={handleBarEnter}
         onMouseLeave={handleLeave}
       >

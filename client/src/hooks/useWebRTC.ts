@@ -55,10 +55,15 @@ export function useWebRTC() {
     peerRef.current = pc;
     setConnectionState("connecting");
 
-    const isCurrent = (): boolean => peerRef.current === pc && connectTokenRef.current === token;
-    const isActive = (): boolean => isCurrent() && !controller.signal.aborted;
+    function isCurrent(): boolean {
+      return peerRef.current === pc && connectTokenRef.current === token;
+    }
 
-    const addTrackStream = (track: MediaStreamTrack): void => {
+    function isActive(): boolean {
+      return isCurrent() && !controller.signal.aborted;
+    }
+
+    function addTrackStream(track: MediaStreamTrack): void {
       const trackId = track.id;
       setStreams((prev) => {
         if (prev.some((entry) => entry.id === trackId)) {
@@ -68,9 +73,9 @@ export function useWebRTC() {
         streamsRef.current = next;
         return next;
       });
-    };
+    }
 
-    const fetchCameraCount = async (): Promise<number | null> => {
+    async function fetchCameraCount(): Promise<number | null> {
       try {
         const response = await fetch(CAMERAS_URL, { signal: controller.signal });
         const cameras = await response.json();
@@ -87,9 +92,9 @@ export function useWebRTC() {
         }
         return 1;
       }
-    };
+    }
 
-    const addVideoTransceivers = (count: number): void => {
+    function addVideoTransceivers(count: number): void {
       const capabilities = RTCRtpReceiver.getCapabilities?.("video");
       const h264Codecs =
         capabilities?.codecs?.filter((codec) => codec.mimeType?.toLowerCase().includes("h264")) ??
@@ -104,7 +109,7 @@ export function useWebRTC() {
           transceiver.setCodecPreferences(h264Codecs);
         }
       }
-    };
+    }
 
     pc.ontrack = (event) => {
       if (!isActive()) {

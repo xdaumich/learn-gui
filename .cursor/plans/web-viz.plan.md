@@ -5,6 +5,20 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #14
+
+- 🎯 **Goal:** Simplify and refine the three-mode layout system for clarity, consistency, and maintainability
+- 📝 **Description:** Extracted a shared `CompactHeader` component from duplicated compact-header JSX in `VideoPanel` and `RerunPanel` (eliminated ~30 lines of structural duplication). Simplified the `LayoutContext` keyboard shortcut handler from nested `setModeRaw` updaters with inline `setFocusTarget` calls to straightforward if/else using existing `focusPanel`, `exitFocus`, and `setMode` callbacks. Exported `DisplayMode`, `FocusTarget` types and `DEFAULT_SPLIT` constant from `LayoutContext` for reuse; replaced magic number `0.35` in `ResizeHandle` with the shared constant. Consolidated duplicated CSS rules for zen/compact video-panel and rerun-panel sizing into combined selectors. Cleaned up TopBar className concatenation with array-filter-join pattern. All CSS class names preserved for test stability.
+- 🧪 **Test:** `npm --prefix client test -- --run` — pass (3 tests)
+- 🔄 **Integration / Regression:** `npm --prefix client test -- --run` — pass (3 tests, all existing assertions unchanged)
+
+## 🐛 Bug Fix #13
+
+- 🎯 **Goal:** Simplify the WebRTC reliability code paths without changing behavior
+- 📝 **Description:** Refactored the client `useWebRTC` hook to make StrictMode/HMR cancellation guards easier to follow (single `isActive()` gate + small helpers), kept fetch abort + stale-attempt no-op behavior, and streamlined server pipeline state reset/reuse logic while preserving the “don’t reopen device when pipeline is active” rule.
+- 🧪 **Test:** `make test-client` — pass (3 vitest)
+- 🔄 **Integration / Regression:** `make test` — pass (3 vitest, 9 pytest)
+
 ## ✨ Feature #13
 
 - 🎯 **Goal:** Zen / Compact / Focus three-mode layout for maximum camera and rerun content

@@ -7,8 +7,8 @@ import {
   type ReactNode,
 } from "react";
 
-type DisplayMode = "zen" | "compact" | "focus";
-type FocusTarget = "camera" | "rerun" | null;
+export type DisplayMode = "zen" | "compact" | "focus";
+export type FocusTarget = "camera" | "rerun" | null;
 
 interface LayoutContextValue {
   mode: DisplayMode;
@@ -30,7 +30,7 @@ export function useLayout() {
 }
 
 const SPLIT_KEY = "telemetry-split-ratio";
-const DEFAULT_SPLIT = 0.35;
+export const DEFAULT_SPLIT = 0.35;
 
 function loadSplit(): number {
   try {
@@ -82,7 +82,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
 
   // Keyboard shortcuts
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
+    function handler(e: KeyboardEvent) {
       const el = e.target as HTMLElement;
       if (
         el?.tagName === "INPUT" ||
@@ -98,51 +98,24 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
           break;
         case "f":
           e.preventDefault();
-          setModeRaw((prev) => {
-            if (prev === "compact") {
-              setFocusTarget("rerun");
-              return "focus";
-            }
-            if (prev === "focus") {
-              setFocusTarget(null);
-              return "compact";
-            }
-            return prev;
-          });
+          if (mode === "compact") focusPanel("rerun");
+          else if (mode === "focus") exitFocus();
           break;
         case "escape":
-          setModeRaw((prev) => {
-            if (prev === "focus") {
-              setFocusTarget(null);
-              return "compact";
-            }
-            if (prev === "compact") return "zen";
-            return prev;
-          });
+          if (mode === "focus") exitFocus();
+          else if (mode === "compact") setMode("zen");
           break;
         case "1":
-          setModeRaw((prev) => {
-            if (prev === "compact") {
-              setFocusTarget("camera");
-              return "focus";
-            }
-            return prev;
-          });
+          if (mode === "compact") focusPanel("camera");
           break;
         case "2":
-          setModeRaw((prev) => {
-            if (prev === "compact") {
-              setFocusTarget("rerun");
-              return "focus";
-            }
-            return prev;
-          });
+          if (mode === "compact") focusPanel("rerun");
           break;
       }
-    };
+    }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [toggleZen]);
+  }, [mode, toggleZen, focusPanel, exitFocus, setMode]);
 
   return (
     <LayoutContext.Provider

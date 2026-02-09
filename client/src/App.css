@@ -21,27 +21,23 @@
   gap: 0;
 }
 
-/* ── Mode: Zen ───────────────────────────────────────────────── */
+/* ── Mode: Zen + Compact (shared split layout) ──────────────── */
 
-.mode-zen .video-panel {
-  flex: 0 0 calc(var(--split, 0.35) * 100%);
-  max-height: 70%;
-  min-height: 140px;
-}
-
-.mode-zen .rerun-panel {
-  flex: 1;
-  min-height: 0;
-}
-
-/* ── Mode: Compact ───────────────────────────────────────────── */
-
+.mode-zen .video-panel,
 .mode-compact .video-panel {
   flex: 0 0 calc(var(--split, 0.35) * 100%);
   max-height: 70%;
+}
+
+.mode-zen .video-panel {
+  min-height: 140px;
+}
+
+.mode-compact .video-panel {
   min-height: 180px;
 }
 
+.mode-zen .rerun-panel,
 .mode-compact .rerun-panel {
   flex: 1;
   min-height: 0;
