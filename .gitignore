@@ -26,5 +26,6 @@ coverage/
 # Playwright
 .playwright-mcp/
 
-# Local snapshots
-rerun-*.png
+
+# Local data logs
+data_logs/

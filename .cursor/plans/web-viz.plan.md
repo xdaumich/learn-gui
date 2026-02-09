@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #16
+
+- 🎯 **Goal:** Ignore local `data_logs` artifacts in git status.
+- 📝 **Description:** Added `data_logs/` to `.gitignore` to keep generated run data out of version control.
+- 🧪 **Test:** `N/A` — configuration-only change.
+- 🔄 **Integration / Regression:** `N/A` — no runnable checks for ignore rules.
+
 ## ✨ Feature #17
 
 - 🎯 **Goal:** Add `docs/infra.md` — architecture overview with readable Mermaid diagrams.
