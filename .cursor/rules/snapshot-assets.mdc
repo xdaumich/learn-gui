@@ -1,0 +1,14 @@
+---
+description: Store snapshot images under docs/assets
+alwaysApply: true
+---
+
+# Snapshot Image Storage
+
+- Save snapshot images (screenshots, UI captures, Playwright snapshots) under `docs/assets/`.
+- Do not place snapshot images at the repo root or other ad hoc locations.
+
+Examples:
+- ✅ `docs/assets/rerun-viewer-direct.png`
+- ✅ `docs/assets/screenshots/gui-snapshot.png`
+- ❌ `./gui-snapshot.png`

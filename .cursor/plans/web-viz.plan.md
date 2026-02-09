@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #18
+
+- 🎯 **Goal:** Keep snapshot images organized under `docs/assets/`.
+- 📝 **Description:** Added a Cursor rule that always applies and directs all snapshot image files to be saved inside `docs/assets/` instead of the repo root or ad hoc folders.
+- 🧪 **Test:** `N/A` — rule-only change.
+- 🔄 **Integration / Regression:** `N/A` — rule-only change.
+
 ## 🐛 Bug Fix #17
 
 - 🎯 **Goal:** Keep macOS `.DS_Store` out of the dexmate-urdf submodule.
