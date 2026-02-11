@@ -5,6 +5,20 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #25
+
+- 🎯 **Goal:** Make Thor/host runtime usage explicit and copy-paste friendly in the README.
+- 📝 **Description:** Reworked `README.md` usage guidance into a practical runbook with separate first-time setup, daily startup, verification commands, cleanup helpers, and Wi-Fi fallback tuning for remote camera load.
+- 🧪 **Test:** `N/A` — documentation-only update.
+- 🔄 **Integration / Regression:** `N/A` — documentation-only update.
+
+## ✨ Feature #24
+
+- 🎯 **Goal:** Add a one-command Thor/host workflow so split deployment no longer requires manual multi-terminal command assembly.
+- 📝 **Description:** Added split make targets (`setup_host`, `setup_remote`, `dev_host`, `dev_remote`, `dev_remote_cleanup`, `dev_remove` alias), introduced dedicated scripts (`scripts/dev_host.sh`, `scripts/dev_remote.sh`, `scripts/setup_remote.sh`) with cleanup and env-driven endpoint wiring, added `.env.host.example` and `.env.remote.example`, and updated `README.md` plus `docs/infra.md` with clear Thor/host startup and data-flow guidance.
+- 🧪 **Test:** `cd server && uv run pytest ../tests/server/test_webrtc_cameras_endpoint.py -v` — pass (1 passed).
+- 🔄 **Integration / Regression:** `npm --prefix client test -- --run` — pass (5/5 tests, 3 files).
+
 ## 🐛 Bug Fix #23
 
 - 🎯 **Goal:** Restore live trajectory/3D robot updates in `make dev` and fail startup early when robot telemetry is missing.

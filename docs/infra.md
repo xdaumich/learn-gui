@@ -23,6 +23,44 @@ relay, recording, and visualization.
 - MediaMTX RTSP ingest: `rtsp://127.0.0.1:8554`
 - MediaMTX API: `http://127.0.0.1:9997`
 
+## Thor-host split profile
+
+Use this profile when cameras are physically attached to Thor and UI runs on the host PC.
+
+- Thor: `make setup_remote && make dev_remote`
+- Host: `THOR_IP=<thor-ip> make setup_host && THOR_IP=<thor-ip> make dev_host`
+- Remote cleanup helper: `make dev_remote_cleanup`
+
+```mermaid
+flowchart TB
+  subgraph thor [JetsonThor]
+    oakCam[OAKCameraUSB]
+    tcCamera[tc-camera]
+    mediaMtx[MediaMTX]
+    oakCam -->|USB| tcCamera
+    tcCamera -->|"RTSP H.264 publish"| mediaMtx
+  end
+
+  subgraph host [HostPC]
+    tcGui[tc-gui]
+    viteClient[ViteClient]
+    browser[Browser]
+    tcRobot[tc-robot optional]
+    viteClient -->|serve app| browser
+    browser -->|"GET /webrtc/cameras"| tcGui
+    tcRobot -->|gRPC telemetry| tcGui
+  end
+
+  mediaMtx -->|"WHEP video stream"| browser
+```
+
+Data path notes:
+
+1. Browser asks `tc-gui` for camera names via `GET /webrtc/cameras`.
+2. Browser negotiates WHEP directly with Thor MediaMTX (`http://<thor-ip>:8889/<camera>/whep`).
+3. MediaMTX streams H.264 video back to the browser.
+4. `tc-gui` never proxies video payloads from MediaMTX.
+
 ## Split runner model
 
 - `tc-gui` - runs Rerun viewer + FastAPI (`telemetry_console.gui_api`).
@@ -101,3 +139,11 @@ sequenceDiagram
 - GUI tile guard + snapshot (`scripts/check_camera_live_gui.mjs`)
 
 If guards fail, startup exits non-zero.
+
+## Split profile verification
+
+- API health on host: `curl http://127.0.0.1:8000/health`
+- Camera list on host: `curl http://127.0.0.1:8000/webrtc/cameras`
+- Frontend on host: open `http://localhost:5173`
+- Expected result: one live tile per camera from `http://<thor-ip>:8889/<camera>/whep`
+- Wi-Fi fallback: lower remote load via `CAMERA_FPS=20` and/or lower `CAMERA_WIDTH`/`CAMERA_HEIGHT` in `.env.remote`

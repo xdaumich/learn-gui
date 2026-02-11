@@ -22,6 +22,89 @@ make dev         # clean stale ports, start split runners, run camera guards
 make test        # run all tests
 ```
 
+## Usage (Thor camera + host UI)
+
+Use this profile when OAK cameras are connected to Jetson Thor and the app runs on a host PC.
+
+### 1) First-time setup
+
+On Thor:
+
+```bash
+cd /Users/xda/Projects/learn-gui
+cp .env.remote.example .env.remote
+set -a; source .env.remote; set +a
+make setup_remote
+```
+
+On host:
+
+```bash
+cd /Users/xda/Projects/learn-gui
+cp .env.host.example .env.host
+# Set THOR_IP in .env.host (recommended), or pass THOR_IP inline when running make.
+set -a; source .env.host; set +a
+make setup_host
+```
+
+### 2) Daily run
+
+Start remote media/camera services on Thor (keep this terminal running):
+
+```bash
+cd /Users/xda/Projects/learn-gui
+set -a; source .env.remote; set +a
+make dev_remote
+```
+
+Start GUI/frontend on host (keep this terminal running):
+
+```bash
+cd /Users/xda/Projects/learn-gui
+set -a; source .env.host; set +a
+make dev_host
+```
+
+If `THOR_IP` is not set in `.env.host`, run:
+
+```bash
+THOR_IP=<thor-ip> make dev_host
+```
+
+### 3) Verify
+
+On host:
+
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/webrtc/cameras
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+Expected result: one live tile per camera streamed from Thor MediaMTX WHEP (`http://<thor-ip>:8889/<camera>/whep`).
+
+### 4) Cleanup and recovery
+
+On Thor:
+
+```bash
+make dev_remote_cleanup
+make dev_remove      # alias of make dev_remote
+```
+
+### 5) Wi-Fi fallback
+
+If Ethernet/Wi-Fi bandwidth is limited, lower camera load in `.env.remote`:
+
+- `CAMERA_FPS=20`
+- `CAMERA_WIDTH=640`
+- `CAMERA_HEIGHT=360`
+
 ## Runtime model
 
 `make dev` runs a split runner stack:
@@ -41,6 +124,12 @@ make test-client   # vitest only
 make test-server   # pytest only
 make dev-cleanup   # kill stale dev listeners on 5173/8000/9876/9090 only
 make dev-guard     # run camera live guard checks against a running stack
+make setup_host    # install host dependencies (client + server)
+make setup_remote  # install remote dependencies (server + mediamtx check)
+make dev_host      # host-only stack (tc-gui + Vite + optional tc-robot)
+make dev_remote    # remote-only stack (mediamtx + tc-camera)
+make dev_remote_cleanup  # clean remote media ports/processes
+make dev_remove    # alias for dev_remote
 make gui           # start tc-gui
 make camera        # start tc-camera
 make recorder      # start tc-recorder

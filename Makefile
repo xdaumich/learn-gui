@@ -1,13 +1,32 @@
-.PHONY: setup dev dev-cleanup dev-guard robot client server mediamtx gui camera recorder replay test test-client test-server lint clean
+.PHONY: setup setup_host setup_remote dev dev-cleanup dev-guard dev_host dev_remote dev_remote_cleanup dev_remove robot client server mediamtx gui camera recorder replay test test-client test-server lint clean
 
 setup:
 	@bash scripts/setup.sh
+
+setup_host:
+	@git submodule update --init --recursive
+	@cd client && npm install
+	@cd server && uv sync
+
+setup_remote:
+	@bash scripts/setup_remote.sh
 
 dev: dev-cleanup
 	@DEV_SKIP_PRE_CLEANUP=1 bash scripts/dev.sh
 
 dev-cleanup:
 	@bash scripts/dev.sh --cleanup-only
+
+dev_host:
+	@bash scripts/dev_host.sh
+
+dev_remote:
+	@bash scripts/dev_remote.sh
+
+dev_remove: dev_remote
+
+dev_remote_cleanup:
+	@bash scripts/dev_remote.sh --cleanup-only
 
 dev-guard:
 	uv run --project server python scripts/check_camera_live_webrtc.py && \
