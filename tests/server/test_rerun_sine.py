@@ -10,6 +10,15 @@ from pathlib import Path
 import pytest
 
 
+def _assert_default_eye_controls(view) -> None:
+    eye_controls = view.properties.get("EyeControls3D")
+    assert eye_controls is not None
+    assert eye_controls.position is not None
+    assert eye_controls.look_target is not None
+    assert eye_controls.position.as_arrow_array().to_pylist() == [[1.0, 1.0, 1.0]]
+    assert eye_controls.look_target.as_arrow_array().to_pylist() == [[0.0, 0.0, 0.5]]
+
+
 def test_rerun_bridge_blueprint_layout(monkeypatch):
     """Ensure the default blueprint splits trajectory + 3D tabs horizontally."""
     import rerun.blueprint as rrb
@@ -55,17 +64,71 @@ def test_rerun_bridge_blueprint_layout(monkeypatch):
         f"{robot_root}/collision_geometries/**",
         f"{robot_root}/joint_transforms/**",
     ]
+    _assert_default_eye_controls(visual_view)
+    _assert_default_eye_controls(collision_view)
 
 
-def test_rerun_bridge_start_and_stream(monkeypatch):
-    """Start the bridge, stream a few data points, and verify the web viewer is reachable."""
+def test_rerun_bridge_robot_blueprint_layout(monkeypatch):
+    """Ensure the robot blueprint includes left/right cmd-state time series views."""
+    import rerun.blueprint as rrb
     import rerun_bridge
 
-    monkeypatch.setattr(rerun_bridge, "load_vega_1p_model", lambda: None, raising=False)
+    captured: dict[str, object] = {}
 
-    # Use non-default ports to avoid clashes with a running dev session
-    grpc_port = 19876
-    web_port = 19090
+    def fake_send_blueprint(blueprint, **_kwargs):
+        captured["blueprint"] = blueprint
+
+    monkeypatch.setattr(rerun_bridge.rr, "send_blueprint", fake_send_blueprint)
+
+    rerun_bridge.send_robot_blueprint(window_seconds=5.0)
+
+    blueprint = captured.get("blueprint")
+    assert blueprint is not None
+    assert isinstance(blueprint, rrb.Blueprint)
+
+    root = blueprint.root_container
+    assert isinstance(root, rrb.Horizontal)
+    assert len(root.contents) == 2
+    assert isinstance(root.contents[0], rrb.Vertical)
+    assert isinstance(root.contents[1], rrb.Tabs)
+
+    left_column = root.contents[0]
+    assert len(left_column.contents) == 2
+
+    left_view = left_column.contents[0]
+    right_view = left_column.contents[1]
+    assert isinstance(left_view, rrb.TimeSeriesView)
+    assert isinstance(right_view, rrb.TimeSeriesView)
+    assert left_view.name == "Left Arm Cmd vs State"
+    assert right_view.name == "Right Arm Cmd vs State"
+
+    expected_left = [f"/trajectory/cmd/L_arm_j{i}" for i in range(1, 8)] + [
+        f"/trajectory/state/L_arm_j{i}" for i in range(1, 8)
+    ]
+    expected_right = [f"/trajectory/cmd/R_arm_j{i}" for i in range(1, 8)] + [
+        f"/trajectory/state/R_arm_j{i}" for i in range(1, 8)
+    ]
+    assert left_view.contents == expected_left
+    assert right_view.contents == expected_right
+
+    tabs = root.contents[1]
+    tab_contents = list(tabs.contents)
+    assert len(tab_contents) == 2
+    visual_view, collision_view = tab_contents
+    _assert_default_eye_controls(visual_view)
+    _assert_default_eye_controls(collision_view)
+
+
+def test_rerun_bridge_start_and_stream(monkeypatch, free_tcp_port_factory):
+    """Start the bridge, stream a few data points, and verify the web viewer is reachable."""
+    import rerun_bridge
+    from telemetry_console import viewer
+
+    monkeypatch.setattr(viewer, "load_vega_1p_model", lambda: None, raising=False)
+
+    # Use dynamically allocated ports to avoid clashes with local sessions.
+    grpc_port = free_tcp_port_factory()
+    web_port = free_tcp_port_factory()
 
     url = rerun_bridge.start(grpc_port=grpc_port, web_port=web_port, open_browser=False)
     assert url == f"http://localhost:{web_port}"
@@ -111,11 +174,12 @@ def test_vega_1p_urdf_path_is_repo_relative():
 
 def test_load_vega_1p_model_logs_urdf(monkeypatch, tmp_path):
     import rerun_bridge
+    from telemetry_console import viewer
 
     fake_urdf = tmp_path / "robot.urdf"
     fake_urdf.write_text("<robot name='test'></robot>", encoding="utf-8")
 
-    monkeypatch.setattr(rerun_bridge, "_vega_1p_urdf_path", lambda: fake_urdf)
+    monkeypatch.setattr(viewer, "_vega_1p_urdf_path", lambda: fake_urdf)
 
     calls: dict[str, object] = {}
 
@@ -152,12 +216,13 @@ def test_load_vega_1p_model_logs_urdf(monkeypatch, tmp_path):
     assert calls["flush"] is True
     assert calls["tree_path"] == fake_urdf
     assert calls["tree_prefix"] == f"/{fake_urdf.stem}"
-    assert rerun_bridge._urdf_tree is sentinel_tree
-    assert rerun_bridge._robot_root == f"/{fake_urdf.stem}"
+    assert viewer._urdf_tree is sentinel_tree
+    assert viewer._robot_root == f"/{fake_urdf.stem}"
 
 
 def test_log_shoulder_transforms_logs_joint_paths(monkeypatch):
     import rerun_bridge
+    from telemetry_console import viewer
 
     logged: list[tuple[str, object]] = []
 
@@ -184,8 +249,8 @@ def test_log_shoulder_transforms_logs_joint_paths(monkeypatch):
             return self._joints.get(name)
 
     tree = FakeTree()
-    monkeypatch.setattr(rerun_bridge, "_urdf_tree", tree, raising=False)
-    monkeypatch.setattr(rerun_bridge, "_robot_root", "/vega_1p_f5d6", raising=False)
+    monkeypatch.setattr(viewer, "_urdf_tree", tree, raising=False)
+    monkeypatch.setattr(viewer, "_robot_root", "/vega_1p_f5d6", raising=False)
     monkeypatch.setattr(rerun_bridge.rr, "log", fake_log)
 
     rerun_bridge._log_shoulder_transforms(0.25, -0.5)

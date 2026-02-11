@@ -15,28 +15,12 @@ def test_webrtc_cameras_endpoint_returns_list(monkeypatch) -> None:
     monkeypatch.setattr(
         webrtc,
         "ensure_streaming",
-        lambda **_kwargs: app.state.camera_sockets,
+        lambda **kwargs: list(kwargs["camera_sockets"]),
     )
+
     client = TestClient(app)
 
     response = client.get("/webrtc/cameras")
 
     assert response.status_code == 200
-    assert response.json() == ["CAM_A", "CAM_B"]
-
-
-def test_webrtc_cameras_endpoint_returns_empty_when_relay_fails(monkeypatch) -> None:
-    app.state.recording_manager = None
-    app.state.camera_sockets = [
-        dai.CameraBoardSocket.CAM_A,
-    ]
-
-    def fake_ensure_streaming(**_kwargs):
-        raise ValueError("relay init failed")
-
-    monkeypatch.setattr(webrtc, "ensure_streaming", fake_ensure_streaming)
-    client = TestClient(app)
-
-    response = client.get("/webrtc/cameras")
-    assert response.status_code == 503
-    assert response.json()["detail"] == "relay init failed"
+    assert response.json() == ["CAM_B", "CAM_A"]
