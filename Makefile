@@ -1,10 +1,13 @@
-.PHONY: setup dev dev-guard test test-client test-server lint clean
+.PHONY: setup dev dev-cleanup dev-guard test test-client test-server lint clean
 
 setup:
 	@bash scripts/setup.sh
 
-dev:
-	@bash scripts/dev.sh
+dev: dev-cleanup
+	@DEV_SKIP_PRE_CLEANUP=1 bash scripts/dev.sh
+
+dev-cleanup:
+	@bash scripts/dev.sh --cleanup-only
 
 dev-guard:
 	uv run --project server python scripts/check_camera_live_webrtc.py

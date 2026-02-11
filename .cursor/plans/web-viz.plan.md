@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #20
+
+- 🎯 **Goal:** Make every `make dev` run clean stale listeners/processes first so ghost background processes do not leak across runs.
+- 📝 **Description:** Added robust pre-start cleanup in `scripts/dev.sh` for Vite/FastAPI/Rerun ports (`5173`, `8000`, `9876`, `9090`) with PID discovery via `lsof`, graceful `TERM`, forced `KILL` fallback, and post-cleanup free-port assertions. Added `--cleanup-only` + `DEV_SKIP_PRE_CLEANUP` support, wired `Makefile` with `dev-cleanup` and `dev: dev-cleanup`, and updated README command docs.
+- 🧪 **Test:** `SKIP_CAMERA_GUARD=1 make dev` — pass (two consecutive launches: second run auto-cleaned stale listeners from the first run before startup; validated all four ports free after `make dev-cleanup`).
+- 🔄 **Integration / Regression:** `make test` — pass (5 vitest, 12 pytest).
+
 ## 🐛 Bug Fix #19
 
 - 🎯 **Goal:** Fail `make dev` fast when any camera is not live, and provide screenshot artifacts users can inspect.

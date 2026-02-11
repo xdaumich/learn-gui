@@ -16,7 +16,7 @@ scripts/         Dev scripts (setup, dev, lint)
 
 ```bash
 make setup       # install all deps (npm + uv + submodules)
-make dev         # start stack + fail fast if any camera is not live
+make dev         # clean stale dev ports/processes, then start stack + camera guards
 make test        # run all tests
 ```
 
@@ -25,6 +25,7 @@ make test        # run all tests
 ```bash
 make test-client   # vitest only
 make test-server   # pytest only
+make dev-cleanup   # kill stale dev listeners on 5173/8000/9876/9090 only
 make dev-guard     # run camera live guard checks against a running stack
 make lint          # ruff + tsc
 make clean         # remove build artifacts
