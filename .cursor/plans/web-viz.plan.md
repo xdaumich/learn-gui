@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #20
+
+- 🎯 **Goal:** Align `docs/sdk_design.md` with the actual state of the current branch and the latest relay/guard commits.
+- 📝 **Description:** Added a branch-status section to `docs/sdk_design.md` (reviewed at `main` commit `2a5fc79`), summarized recent commit impacts (`1701b9d` through `2a5fc79`), added a current-vs-target matrix, clarified that detailed tasks are historical reference, and replaced the stale “plan complete / which approach” tail with current-status guidance.
+- 🧪 **Test:** `N/A` — documentation-only update.
+- 🔄 **Integration / Regression:** `N/A` — documentation-only update.
+
 ## ✨ Feature #19
 
 - 🎯 **Goal:** Finalize relay-only camera streaming with recording decode tap and remove legacy aiortc signaling path.
