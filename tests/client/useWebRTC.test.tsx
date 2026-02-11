@@ -75,6 +75,7 @@ function Harness({ onReady }: { onReady: (api: ReturnType<typeof useWebRTC>) => 
 
 describe("useWebRTC", () => {
   test("connect negotiates an offer and updates connection state", async () => {
+    FakeRTCPeerConnection.instances = [];
     vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
     vi.stubGlobal("RTCRtpReceiver", {
       getCapabilities: () => ({
@@ -114,6 +115,8 @@ describe("useWebRTC", () => {
     await waitFor(() => {
       expect(api?.connectionState).toBe("connected");
     });
+    expect(api?.expectedCameraCount).toBe(2);
+    expect(api?.partialLive).toBe(false);
 
     const pc = FakeRTCPeerConnection.instances[0];
     expect(pc.transceivers).toHaveLength(2);
@@ -124,4 +127,54 @@ describe("useWebRTC", () => {
       expect(api?.streams).toHaveLength(2);
     });
   });
+
+  test(
+    "flags partial live stream when expected cameras are missing",
+    async () => {
+      FakeRTCPeerConnection.instances = [];
+      vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
+      vi.stubGlobal("RTCRtpReceiver", {
+        getCapabilities: () => ({
+          codecs: [{ mimeType: "video/H264" }],
+        }),
+      });
+      vi.stubGlobal("MediaStream", FakeMediaStream);
+
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith("/webrtc/cameras")) {
+          return Promise.resolve({
+            json: async () => ["CAM_A", "CAM_B"],
+          });
+        }
+        return Promise.resolve({
+          json: async () => ({ type: "answer", sdp: "answer-sdp" }),
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      let api: ReturnType<typeof useWebRTC> | null = null;
+      render(<Harness onReady={(value) => (api = value)} />);
+
+      await api?.connect();
+
+      await waitFor(() => {
+        expect(api?.connectionState).toBe("connected");
+        expect(api?.expectedCameraCount).toBe(2);
+      });
+
+      const pc = FakeRTCPeerConnection.instances[0];
+      pc.ontrack?.({ track: { id: "track-1" } as MediaStreamTrack, streams: [] } as RTCTrackEvent);
+
+      await waitFor(() => {
+        expect(api?.streams).toHaveLength(1);
+        expect(api?.partialLive).toBe(false);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 4500));
+      await waitFor(() => {
+        expect(api?.partialLive).toBe(true);
+      });
+    },
+    12000,
+  );
 });

@@ -7,8 +7,22 @@ import CompactHeader from "./CompactHeader";
 export default function VideoPanel() {
   const { mode } = useLayout();
   const isZen = mode === "zen";
-  const { streams, connectionState, connect, disconnect } = useWebRTC();
+  const {
+    streams,
+    connectionState,
+    expectedCameraCount,
+    partialLive,
+    connect,
+    disconnect,
+  } = useWebRTC();
   const hasStreams = streams.length > 0;
+  const liveCount = streams.length;
+  const missingCount =
+    expectedCameraCount !== null ? Math.max(expectedCameraCount - liveCount, 0) : 0;
+  const cameraGuardMessage =
+    expectedCameraCount !== null && partialLive
+      ? `Camera stream error: ${liveCount}/${expectedCameraCount} live (${missingCount} missing)`
+      : null;
 
   const statusText = useMemo(() => {
     switch (connectionState) {
@@ -64,6 +78,11 @@ export default function VideoPanel() {
         />
       )}
       <div className={`media-placeholder ${hasStreams ? "has-video" : ""}`}>
+        {cameraGuardMessage && (
+          <div className="stream-error" role="alert">
+            {cameraGuardMessage}
+          </div>
+        )}
         {hasStreams ? (
           <>
             <div className="camera-grid">{tiles}</div>

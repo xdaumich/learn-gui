@@ -2,9 +2,11 @@ import { useCallback, useRef, useState } from "react";
 
 type WebRTCState = RTCPeerConnectionState | "idle";
 type StreamEntry = { id: string; stream: MediaStream };
+type CameraCountInfo = { transceiverCount: number; expectedCameraCount: number | null };
 
 const SIGNALING_URL = "http://localhost:8000/webrtc/offer";
 const CAMERAS_URL = "http://localhost:8000/webrtc/cameras";
+const PARTIAL_LIVE_GRACE_MS = Number(import.meta.env.VITE_CAMERA_LIVE_GRACE_MS ?? "4000");
 
 function stopStreamTracks(entries: StreamEntry[]): void {
   entries.forEach((entry) => {
@@ -17,8 +19,18 @@ export function useWebRTC() {
   const streamsRef = useRef<StreamEntry[]>([]);
   const connectTokenRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const partialLiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [streams, setStreams] = useState<StreamEntry[]>([]);
   const [connectionState, setConnectionState] = useState<WebRTCState>("idle");
+  const [expectedCameraCount, setExpectedCameraCount] = useState<number | null>(null);
+  const [partialLiveGateOpen, setPartialLiveGateOpen] = useState(false);
+
+  const clearPartialLiveTimer = useCallback(() => {
+    if (partialLiveTimerRef.current) {
+      clearTimeout(partialLiveTimerRef.current);
+      partialLiveTimerRef.current = null;
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
     // Invalidate any in-flight connect() attempt and abort pending fetches.
@@ -38,8 +50,11 @@ export function useWebRTC() {
     stopStreamTracks(streamsRef.current);
     streamsRef.current = [];
     setStreams([]);
+    setExpectedCameraCount(null);
+    clearPartialLiveTimer();
+    setPartialLiveGateOpen(false);
     setConnectionState(pc ? "disconnected" : "idle");
-  }, []);
+  }, [clearPartialLiveTimer]);
 
   const connect = useCallback(async () => {
     if (peerRef.current) {
@@ -75,7 +90,7 @@ export function useWebRTC() {
       });
     }
 
-    async function fetchCameraCount(): Promise<number | null> {
+    async function fetchCameraCount(): Promise<CameraCountInfo | null> {
       try {
         const response = await fetch(CAMERAS_URL, { signal: controller.signal });
         const cameras = await response.json();
@@ -83,14 +98,14 @@ export function useWebRTC() {
           return null;
         }
         if (Array.isArray(cameras) && cameras.length > 0) {
-          return cameras.length;
+          return { transceiverCount: cameras.length, expectedCameraCount: cameras.length };
         }
-        return 1;
+        return { transceiverCount: 1, expectedCameraCount: null };
       } catch {
         if (!isActive()) {
           return null;
         }
-        return 1;
+        return { transceiverCount: 1, expectedCameraCount: null };
       }
     }
 
@@ -123,17 +138,33 @@ export function useWebRTC() {
         return;
       }
       setConnectionState(pc.connectionState);
+      if (pc.connectionState === "connected") {
+        clearPartialLiveTimer();
+        setPartialLiveGateOpen(false);
+        partialLiveTimerRef.current = setTimeout(() => {
+          if (isActive()) {
+            setPartialLiveGateOpen(true);
+          }
+        }, PARTIAL_LIVE_GRACE_MS);
+      } else {
+        clearPartialLiveTimer();
+        setPartialLiveGateOpen(false);
+      }
       if (pc.connectionState === "failed") {
         disconnect();
       }
     };
 
     try {
-      const cameraCount = await fetchCameraCount();
-      if (cameraCount === null) {
+      setExpectedCameraCount(null);
+      clearPartialLiveTimer();
+      setPartialLiveGateOpen(false);
+      const cameraCountInfo = await fetchCameraCount();
+      if (cameraCountInfo === null) {
         return;
       }
-      addVideoTransceivers(cameraCount);
+      setExpectedCameraCount(cameraCountInfo.expectedCameraCount);
+      addVideoTransceivers(cameraCountInfo.transceiverCount);
       if (!isActive()) {
         return;
       }
@@ -164,6 +195,8 @@ export function useWebRTC() {
       if (!isActive()) {
         return;
       }
+      clearPartialLiveTimer();
+      setPartialLiveGateOpen(false);
       disconnect();
       throw error;
     } finally {
@@ -171,7 +204,20 @@ export function useWebRTC() {
         abortRef.current = null;
       }
     }
-  }, [disconnect]);
+  }, [clearPartialLiveTimer, disconnect]);
 
-  return { streams, connectionState, connect, disconnect };
+  const partialLive =
+    connectionState === "connected" &&
+    partialLiveGateOpen &&
+    expectedCameraCount !== null &&
+    streams.length < expectedCameraCount;
+
+  return {
+    streams,
+    connectionState,
+    expectedCameraCount,
+    partialLive,
+    connect,
+    disconnect,
+  };
 }

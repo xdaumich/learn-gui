@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #19
+
+- 🎯 **Goal:** Fail `make dev` fast when any camera is not live, and provide screenshot artifacts users can inspect.
+- 📝 **Description:** Added startup camera guards for WebRTC (`scripts/check_camera_live_webrtc.py`) and GUI tile readiness (`scripts/check_camera_live_gui.mjs`), wired them into `scripts/dev.sh` with strict Vite/API port checks, and added a `make dev-guard` target. The GUI guard now writes success/failure snapshots to `docs/assets/screenshots/`. Also added partial-live UI error messaging in `useWebRTC` + `VideoPanel` and updated setup/docs for Playwright guard support.
+- 🧪 **Test:** `make dev` — pass (WebRTC guard received 3/3 first frames, GUI guard confirmed 3/3 live tiles, generated `docs/assets/screenshots/camera-live-guard-success.png`).
+- 🔄 **Integration / Regression:** `make test` — pass (5 vitest, 12 pytest).
+
 ## ✨ Feature #18
 
 - 🎯 **Goal:** Keep snapshot images organized under `docs/assets/`.

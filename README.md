@@ -16,7 +16,7 @@ scripts/         Dev scripts (setup, dev, lint)
 
 ```bash
 make setup       # install all deps (npm + uv + submodules)
-make dev         # start client + server + rerun demo
+make dev         # start stack + fail fast if any camera is not live
 make test        # run all tests
 ```
 
@@ -25,9 +25,30 @@ make test        # run all tests
 ```bash
 make test-client   # vitest only
 make test-server   # pytest only
+make dev-guard     # run camera live guard checks against a running stack
 make lint          # ruff + tsc
 make clean         # remove build artifacts
 uv run --project server python scripts/run_camera.py  # local OAK camera windows
+```
+
+## Camera live guard
+
+`make dev` now runs a regression guard that checks camera readiness across:
+
+- API discovery (`/health`, `/webrtc/cameras`)
+- WebRTC frame delivery (`/webrtc/offer`)
+- GUI rendering (headless browser validates live tiles)
+
+If any camera is not live before timeout, `make dev` exits non-zero and prints
+an error. The GUI guard also saves verification snapshots:
+
+- `docs/assets/screenshots/camera-live-guard-success.png`
+- `docs/assets/screenshots/camera-live-guard-failure.png`
+
+To bypass guards intentionally (for environments without cameras):
+
+```bash
+SKIP_CAMERA_GUARD=1 make dev
 ```
 
 ## GUI usage
