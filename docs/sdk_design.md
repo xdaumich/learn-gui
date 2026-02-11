@@ -1,5 +1,8 @@
 # SDK Refactor Implementation Plan
 
+> Status: Historical planning document, not the current implementation source of truth.
+> Current implementation status lives in `.cursor/plans/web-viz.plan.md` and `README.md`.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Restructure the monolithic server into five independent processes (`run_gui`, `run_camera`, `run_robot`, `run_recorder`, `run_replay`) that communicate via ZMQ + existing buses (MediaMTX, Rerun gRPC), packaged as a single installable Python SDK (`telemetry_console`).

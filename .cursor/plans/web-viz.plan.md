@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #21 | 🐛 Bug Fix #21
+
+- 🎯 **Goal:** Remove hacky scaffolding and placeholder behavior across client/server/scripts to keep the codebase compact, minimal, and easier to maintain.
+- 📝 **Description:** Added shared client runtime config (`client/src/config.ts`) and removed scattered hardcoded URLs/ports; simplified TopBar to remove non-functional controls and replaced nested status ternaries; removed dead placeholder components/hooks (`TimelineBar`, `useTimeSync`); added derived layout flags in `LayoutContext`; hardened backend relay error semantics (`/webrtc/cameras` now returns 503 with detail), replaced brittle `RecordingStatus(**state.__dict__)` mapping, converted server `print` calls to logging, and extracted relay timing magic numbers into named constants; removed duplicate/placeholder server tests and replaced with real smoke coverage; simplified setup/guard workflow by removing root `node_modules` symlink step, making `dev-guard` fail-fast in one command chain, and simplifying `run_rerun_demo.py` invocation assumptions; marked `docs/sdk_design.md` as historical to reduce doc/code mismatch confusion.
+- 🧪 **Test:** `make lint && make test` — pass (ruff clean, client 5/5 vitest, server 19/19 pytest).
+- 🔄 **Integration / Regression:** `make dev` — pass across all 3 milestones (stack restart + camera guards succeeded each run; GUI guard confirmed 3/3 live tiles).
+
 ## ✨ Feature #20
 
 - 🎯 **Goal:** Align `docs/sdk_design.md` with the actual state of the current branch and the latest relay/guard commits.

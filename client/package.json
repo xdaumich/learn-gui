@@ -8,8 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "camera-guard:gui": "node ../scripts/check_camera_live_gui.mjs"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^19.2.4",

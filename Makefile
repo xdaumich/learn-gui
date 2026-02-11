@@ -10,8 +10,8 @@ dev-cleanup:
 	@bash scripts/dev.sh --cleanup-only
 
 dev-guard:
-	uv run --project server python scripts/check_camera_live_webrtc.py
-	node scripts/check_camera_live_gui.mjs
+	uv run --project server python scripts/check_camera_live_webrtc.py && \
+		node scripts/check_camera_live_gui.mjs
 
 test: test-client test-server
 
