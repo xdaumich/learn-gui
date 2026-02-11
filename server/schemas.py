@@ -1,14 +1,3 @@
-"""Pydantic models for request/response payloads."""
+"""Backward-compat shim for schemas module."""
 
-from pydantic import BaseModel
-
-
-class HealthResponse(BaseModel):
-    status: str
-
-
-class RecordingStatus(BaseModel):
-    active: bool
-    run_id: str | None = None
-    samples: int = 0
-    state: str
+from telemetry_console.schemas import HealthResponse, RecordingStatus  # noqa: F401

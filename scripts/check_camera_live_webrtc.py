@@ -30,6 +30,13 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _normalize_base_url(base_url: str) -> str:
     return base_url.rstrip("/")
 
@@ -137,6 +144,36 @@ def _wait_for_relay_paths(
     return [], missing_all
 
 
+def _wait_for_robot_live(
+    robot_status_url: str,
+    *,
+    timeout_s: float,
+    poll_s: float,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_s
+    last_payload: dict[str, Any] | None = None
+    last_error: Exception | None = None
+
+    while time.monotonic() < deadline:
+        try:
+            payload = _request_json(robot_status_url, timeout_s=5.0)
+            if isinstance(payload, dict):
+                last_payload = payload
+                if payload.get("alive") is True:
+                    return payload
+        except Exception as exc:  # pragma: no cover - guarded by integration runtime
+            last_error = exc
+        time.sleep(poll_s)
+
+    details = f"last_payload={last_payload}"
+    if last_error is not None:
+        details += f", last_error={last_error}"
+    raise RuntimeError(
+        "Robot liveness check timed out "
+        f"after {timeout_s:.1f}s ({details})."
+    )
+
+
 def main() -> int:
     base_url = _normalize_base_url(_env_str("CAMERA_GUARD_API_BASE_URL", "http://127.0.0.1:8000"))
     mediamtx_api_url = _normalize_base_url(
@@ -144,9 +181,11 @@ def main() -> int:
     )
     timeout_s = _env_float("CAMERA_GUARD_TIMEOUT_S", 20.0)
     poll_s = _env_float("CAMERA_GUARD_POLL_S", 0.5)
+    require_robot = _env_bool("CAMERA_GUARD_REQUIRE_ROBOT", True)
 
     health_url = f"{base_url}/health"
     cameras_url = f"{base_url}/webrtc/cameras"
+    robot_status_url = f"{base_url}/robot/status"
     paths_url = f"{mediamtx_api_url}/v3/paths/list"
 
     try:
@@ -183,6 +222,21 @@ def main() -> int:
             f"relay paths ready for {received_count}/{expected_count} streams.",
             flush=True,
         )
+        if require_robot:
+            robot_status = _wait_for_robot_live(
+                robot_status_url,
+                timeout_s=timeout_s,
+                poll_s=poll_s,
+            )
+            age_s = robot_status.get("age_s")
+            age_text = f"{float(age_s):.2f}s" if isinstance(age_s, (int, float)) else "unknown"
+            print(
+                "[camera-guard:webrtc] PASS: "
+                f"robot trajectory heartbeat is live (age={age_text}).",
+                flush=True,
+            )
+        else:
+            print("[camera-guard:webrtc] Robot liveness check skipped by env.", flush=True)
         return 0
     except urllib.error.URLError as exc:
         print(f"[camera-guard:webrtc] ERROR: API request failed: {exc}", file=sys.stderr)

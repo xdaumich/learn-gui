@@ -13,6 +13,8 @@ dependencies = [
     "dexmate_urdf",
     "zarr",
     "numcodecs",
+    "pyzmq",
+    "msgpack",
 ]
 
 [project.optional-dependencies]
@@ -22,8 +24,22 @@ dev = [
     "ruff",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["telemetry_console"]
+
 [tool.ruff]
 line-length = 100
+
+[project.scripts]
+tc-gui = "telemetry_console.cli:run_gui"
+tc-camera = "telemetry_console.cli:run_camera"
+tc-robot = "telemetry_console.cli:run_robot"
+tc-recorder = "telemetry_console.cli:run_recorder"
+tc-replay = "telemetry_console.cli:run_replay"
 
 [tool.pytest.ini_options]
 testpaths = ["../tests/server"]

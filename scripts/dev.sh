@@ -6,9 +6,15 @@ VITE_PORT="${VITE_PORT:-5173}"
 API_PORT="${API_PORT:-8000}"
 RERUN_GRPC_PORT="${RERUN_GRPC_PORT:-9876}"
 RERUN_WEB_PORT="${RERUN_WEB_PORT:-9090}"
+RERUN_GRPC_URL="${RERUN_GRPC_URL:-rerun+http://127.0.0.1:${RERUN_GRPC_PORT}/proxy}"
+RERUN_WEB_URL="${RERUN_WEB_URL:-http://localhost:${RERUN_WEB_PORT}}"
 MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-8554}"
 MEDIAMTX_WHEP_PORT="${MEDIAMTX_WHEP_PORT:-8889}"
 MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-9997}"
+ROBOT_STATE_PORT="${ROBOT_STATE_PORT:-5555}"
+RECORDER_STATUS_PORT="${RECORDER_STATUS_PORT:-5556}"
+RECORDER_CONTROL_PORT="${RECORDER_CONTROL_PORT:-5557}"
+ROBOT_HEARTBEAT_PATH="${ROBOT_HEARTBEAT_PATH:-data_logs/.robot_heartbeat.json}"
 MEDIAMTX_CONFIG_PATH="${MEDIAMTX_CONFIG_PATH:-mediamtx.yml}"
 GUI_URL="${CAMERA_GUARD_GUI_URL:-http://localhost:${VITE_PORT}}"
 GUI_GUARD_BROWSER="${CAMERA_GUARD_GUI_BROWSER:-chromium}"
@@ -71,11 +77,17 @@ kill_port_if_in_use() {
 cleanup_preexisting_ports() {
   local cleaned_any=0
 
+  # Stale split-runner processes can survive abnormal shutdowns. Best-effort stop.
+  pkill -f 'tc-gui|tc-camera|tc-recorder|tc-robot|run_robot\.py' >/dev/null 2>&1 || true
+
   for entry in \
     "${VITE_PORT}:Vite" \
     "${API_PORT}:FastAPI" \
     "${RERUN_GRPC_PORT}:Rerun gRPC" \
-    "${RERUN_WEB_PORT}:Rerun web"
+    "${RERUN_WEB_PORT}:Rerun web" \
+    "${ROBOT_STATE_PORT}:Robot state ZMQ" \
+    "${RECORDER_STATUS_PORT}:Recorder status ZMQ" \
+    "${RECORDER_CONTROL_PORT}:Recorder control ZMQ"
   do
     local port="${entry%%:*}"
     local name="${entry#*:}"
@@ -152,6 +164,9 @@ require_free_port "${VITE_PORT}" "Vite"
 require_free_port "${API_PORT}" "FastAPI"
 require_free_port "${RERUN_GRPC_PORT}" "Rerun gRPC"
 require_free_port "${RERUN_WEB_PORT}" "Rerun web"
+require_free_port "${ROBOT_STATE_PORT}" "Robot state ZMQ"
+require_free_port "${RECORDER_STATUS_PORT}" "Recorder status ZMQ"
+require_free_port "${RECORDER_CONTROL_PORT}" "Recorder control ZMQ"
 if [[ -n "${MEDIAMTX_BIN}" ]]; then
   require_free_port "${MEDIAMTX_RTSP_PORT}" "MediaMTX RTSP"
   require_free_port "${MEDIAMTX_WHEP_PORT}" "MediaMTX WHEP"
@@ -169,12 +184,8 @@ echo "==> Starting client (Vite)..."
 (cd client && npm run dev -- --host localhost --port "${VITE_PORT}" --strictPort) &
 PIDS+=("$!")
 
-echo "==> Starting server (FastAPI)..."
-(cd server && uv run uvicorn main:app --reload --port "${API_PORT}") &
-PIDS+=("$!")
-
-echo "==> Starting Rerun demo (trajectory + 3D model)..."
-uv run --project server python scripts/run_rerun_demo.py &
+echo "==> Starting GUI API + Rerun viewer..."
+uv run --project server tc-gui --no-client --port "${API_PORT}" &
 PIDS+=("$!")
 
 if [[ -n "${MEDIAMTX_BIN}" ]]; then
@@ -189,6 +200,26 @@ if [[ -n "${MEDIAMTX_BIN}" ]]; then
 else
   echo "==> MediaMTX not found on PATH; relay mode is unavailable."
   echo "    Install with: brew install mediamtx"
+fi
+
+echo "==> Starting camera relay runner..."
+uv run --project server tc-camera &
+PIDS+=("$!")
+
+echo "==> Starting recorder runner..."
+uv run --project server tc-recorder &
+PIDS+=("$!")
+
+if [[ "${RUN_ROBOT_RUNNER:-1}" == "1" ]]; then
+  echo "==> Starting robot runner..."
+  uv run --project server tc-robot \
+    --no-open-browser \
+    --rerun-grpc-url "${RERUN_GRPC_URL}" \
+    --rerun-web-url "${RERUN_WEB_URL}" \
+    --heartbeat-path "${ROBOT_HEARTBEAT_PATH}" &
+  PIDS+=("$!")
+else
+  echo "==> RUN_ROBOT_RUNNER!=1, skipping robot runner (trajectory/3D guard will fail)."
 fi
 
 if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then

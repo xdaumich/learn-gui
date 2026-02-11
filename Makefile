@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-cleanup dev-guard test test-client test-server lint clean
+.PHONY: setup dev dev-cleanup dev-guard robot client server mediamtx gui camera recorder replay test test-client test-server lint clean
 
 setup:
 	@bash scripts/setup.sh
@@ -12,6 +12,31 @@ dev-cleanup:
 dev-guard:
 	uv run --project server python scripts/check_camera_live_webrtc.py && \
 		node scripts/check_camera_live_gui.mjs
+
+robot:
+	-pkill -f 'run_robot\.py' 2>/dev/null; sleep 0.5
+	uv run --project server python scripts/run_robot.py --no-open-browser
+
+client:
+	cd client && npm run dev
+
+server:
+	cd server && uv run uvicorn main:app --reload --port 8000
+
+mediamtx:
+	mediamtx
+
+gui:
+	uv run --project server tc-gui
+
+camera:
+	uv run --project server tc-camera
+
+recorder:
+	uv run --project server tc-recorder
+
+replay:
+	uv run --project server tc-replay $(ARGS)
 
 test: test-client test-server
 

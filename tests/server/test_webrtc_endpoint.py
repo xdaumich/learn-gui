@@ -5,28 +5,24 @@ from main import app
 import webrtc
 
 
-def test_webrtc_cameras_endpoint_starts_streaming(monkeypatch) -> None:
-    app.state.recording_manager = None
+def test_webrtc_cameras_endpoint_orders_provided_sockets() -> None:
     app.state.camera_sockets = [
         dai.CameraBoardSocket.CAM_A,
         dai.CameraBoardSocket.CAM_B,
     ]
-    received: dict[str, object] = {}
-
-    def fake_ensure_streaming(*, camera_sockets, recording_manager, **_kwargs):
-        received["camera_sockets"] = list(camera_sockets)
-        received["recording_manager"] = recording_manager
-        return list(camera_sockets)
-
-    monkeypatch.setattr(webrtc, "ensure_streaming", fake_ensure_streaming)
     client = TestClient(app)
 
     response = client.get("/webrtc/cameras")
     assert response.status_code == 200
     assert response.json() == ["CAM_B", "CAM_A"]
 
-    assert received["camera_sockets"] == [
-        dai.CameraBoardSocket.CAM_B,
-        dai.CameraBoardSocket.CAM_A,
-    ]
-    assert received["recording_manager"] is not None
+
+def test_webrtc_cameras_endpoint_falls_back_to_layout(monkeypatch) -> None:
+    app.state.camera_sockets = None
+    monkeypatch.setattr(webrtc, "list_camera_sockets", lambda: [])
+
+    client = TestClient(app)
+    response = client.get("/webrtc/cameras")
+
+    assert response.status_code == 200
+    assert response.json()[:3] == ["CAM_B", "CAM_A", "CAM_C"]
