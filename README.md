@@ -5,20 +5,34 @@ WebRTC camera viewer + Rerun trajectory viewer with synchronized timeline.
 ## Repo layout
 
 ```
-client/          React + Vite frontend
-server/          FastAPI backend (camera relay control, Rerun bridge)
-tests/           All tests (client + server)
-external/        Git submodules (depthai-core, rerun, dexmate-urdf)
-scripts/         Dev scripts (setup, dev, lint)
+client/                    React + Vite frontend
+server/
+  telemetry_console/       Split SDK/runtime modules (viewer, camera, env, recorder, replay, GUI API, CLI)
+  main.py                  Backward-compat API entry point (delegates to telemetry_console.gui_api)
+tests/                     All tests (client + server)
+external/                  Git submodules (depthai-core, rerun, dexmate-urdf)
+scripts/                   Dev scripts (setup, dev, lint)
 ```
 
 ## Quick start
 
 ```bash
 make setup       # install all deps (npm + uv + submodules)
-make dev         # clean stale dev ports/processes, then start stack + camera guards
+make dev         # clean stale ports, start split runners, run camera guards
 make test        # run all tests
 ```
+
+## Runtime model
+
+`make dev` runs a split runner stack:
+
+- `tc-gui` (FastAPI + Rerun viewer)
+- `tc-camera` (DepthAI to MediaMTX relay)
+- `tc-recorder` (recording service)
+- MediaMTX relay
+- Vite frontend
+
+Robot runner starts by default in dev startup (disable with `RUN_ROBOT_RUNNER=0 make dev`).
 
 ## Individual commands
 
@@ -27,6 +41,11 @@ make test-client   # vitest only
 make test-server   # pytest only
 make dev-cleanup   # kill stale dev listeners on 5173/8000/9876/9090 only
 make dev-guard     # run camera live guard checks against a running stack
+make gui           # start tc-gui
+make camera        # start tc-camera
+make recorder      # start tc-recorder
+make replay ARGS="data_logs/<run_id>/<camera>.zarr"   # replay logs
+make robot         # run standalone robot demo loop
 make lint          # ruff + tsc
 make clean         # remove build artifacts
 uv run --project server python scripts/run_camera.py  # local OAK camera windows

@@ -15,51 +15,33 @@
 
 ## Status update (current `main`)
 
-Reviewed against `main` at commit `2a5fc79` on 2026-02-11.
+Reviewed against current `main` on 2026-02-11.
 
-This document was originally created as an execution plan in commit `038a3d1`.
-Since then, `main` has evolved along a different path: camera streaming was cut
-over to MediaMTX WHEP and startup reliability was hardened in the existing
-`server/` modules, while the five-runner `telemetry_console` package split in
-this document has not been merged into `main`.
+This refactor plan has now been executed in milestones:
 
-### Recent commits and impact on this plan
-
-| Commit | Summary | Impact relative to this document |
-|---|---|---|
-| `1701b9d` | fail fast when cameras are not live in `make dev` | Added startup guard scripts + GUI snapshots; this behavior is not captured in the original task flow below. |
-| `1711be5` | run dev cleanup before startup | Replaced the simplistic dev launcher with robust pre-cleanup and `--cleanup-only`; Task 10 snippets below are now stale. |
-| `601c971` | map camera relay architecture baseline | Updated `docs/infra.md` toward current relay architecture instead of five-runner extraction. |
-| `aeab048` | add encoded camera relay backend | Introduced host relay path for encoded packets and MediaMTX ingest. |
-| `9289604` | cut over camera streaming to WHEP | Removed legacy aiortc-style signaling path from active flow; browser now negotiates directly with MediaMTX WHEP. |
-| `7869c2a` | finalize recording decode cleanup | Finalized decode-on-recording tap + docs updates (`docs/webrtc_encoding.md`, `docs/webrtc_comparision.md`). |
-| `2a5fc79` | refresh camera live guard success snapshot | Documentation/proof artifact refresh only; no architecture change. |
+- Task 1-2: dependency + ZMQ channel foundation merged.
+- Task 3-4: `viewer.py` and `camera.py` extracted; compatibility shims kept.
+- Task 5-7: `env.py`, `recorder.py`, and `replay.py` added with tests.
+- Task 8-12: `gui_api.py`, `cli.py`, script entry points, package exports, and
+  backward-compat shims are in place.
+- Task 13: infrastructure docs updated to the split-runner model.
 
 ### Current branch reality vs original target
 
 | Area | Original target in this plan | Status on current `main` |
 |---|---|---|
-| Process model | Five independent runners (`tc-gui`, `tc-camera`, `tc-robot`, `tc-recorder`, `tc-replay`) | Not merged; runtime is still centered on `server/main.py` + `server/webrtc.py` + `scripts/dev.sh`. |
-| Package split | `server/telemetry_console/*` package extraction | Not present in current tree. |
-| Entry points | `project.scripts` for `tc-*` CLIs | Not present in `server/pyproject.toml`. |
-| Camera delivery | MediaMTX relay (planned) | Implemented and active: encoded relay + WHEP client flow. |
-| Client signaling | Legacy `/webrtc/offer` replacement | Implemented: per-camera WHEP negotiation in `useWebRTC`. |
-| Startup reliability | Not explicitly handled | Implemented: pre-cleanup + camera live guards + optional bypass flag. |
-| Infra docs alignment | Planned as final Task 13 | Implemented independently in `docs/infra.md` for current architecture. |
+| Process model | Five independent runners (`tc-gui`, `tc-camera`, `tc-robot`, `tc-recorder`, `tc-replay`) | Implemented in CLI + dev orchestration; robot runner is enabled by default and can be disabled via env. |
+| Package split | `server/telemetry_console/*` package extraction | Implemented. |
+| Entry points | `project.scripts` for `tc-*` CLIs | Implemented in `server/pyproject.toml`. |
+| Camera delivery | MediaMTX relay | Implemented (`tc-camera` publisher + WHEP clients). |
+| Client signaling | Legacy `/webrtc/offer` replacement | Implemented (WHEP path). |
+| Startup reliability | pre-clean + camera guards | Preserved in `scripts/dev.sh` with milestone cutover. |
+| Infra docs alignment | Final doc pass | Updated in `docs/infra.md` and README. |
 
-### Revised next-step plan from current baseline
+### Operational note
 
-1. Treat WHEP relay + startup guards as non-regression behavior.
-2. Decide explicitly whether full `telemetry_console` package extraction is still
-   a product goal; if not, archive Tasks 1-13 as historical design work.
-3. If extraction remains a goal, restart from the current monolith and extract
-   incrementally with compatibility wrappers, preserving:
-   - `/webrtc/cameras` relay bring-up behavior
-   - `make dev` cleanup + guard workflow
-   - recording decode tap behavior
-
-The detailed task plan below is preserved for historical reference, but several
-task snippets (especially Task 10 and Task 11) no longer match `main`.
+`make dev` now starts `tc-robot` by default to keep trajectory + 3D telemetry live.
+Use `RUN_ROBOT_RUNNER=0 make dev` to skip it intentionally.
 
 ---
 
@@ -1712,6 +1694,6 @@ telemetry_console/
 
 Historical plan section ends here.
 
-Current branch status: the plan is **partially superseded** by WHEP relay and
-startup reliability work landed directly on `main`. Use the status update at the
-top of this document as the source of truth for what is currently implemented.
+Current branch status: this plan has been implemented in milestone increments.
+Keep the status section at the top updated for operational adjustments and any
+follow-up refactors.

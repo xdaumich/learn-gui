@@ -1,27 +1,66 @@
 # Infrastructure and Code Structure
 
-This document summarizes the current runtime architecture for camera relay,
-recording, and visualization.
+This document summarizes the current split-runner runtime architecture for camera
+relay, recording, and visualization.
 
 ## Repository layout
 
-- `client/` - React + Vite frontend (UI panels, layout state, WHEP client hook).
-- `server/` - FastAPI backend (camera relay orchestration, recording, Rerun bridge).
-- `tests/` - Vitest + Pytest coverage for client/server.
-- `scripts/` - Dev helpers (setup, dev stack, camera guards, demos).
-- `external/` - Git submodules (DepthAI SDK, Rerun SDK, URDF assets).
+- `client/` - React + Vite frontend (camera panel, layout modes, WHEP client hook).
+- `server/` - backend + SDK modules.
+- `server/telemetry_console/` - split runtime package:
+  - `viewer.py`, `camera.py`, `env.py`, `recorder.py`, `replay.py`
+  - `gui_api.py`, `cli.py`, `schemas.py`, `zmq_channels.py`
+- `tests/` - Vitest + Pytest coverage.
+- `scripts/` - dev orchestration, camera guards, local demos.
 
 ## Runtime services
 
 - Frontend: `http://localhost:5173`
-- FastAPI: `http://127.0.0.1:8000`
+- GUI API: `http://127.0.0.1:8000`
+- Rerun web viewer: `http://localhost:9090`
+- Rerun gRPC: `rerun+http://127.0.0.1:9876/proxy`
 - MediaMTX WHEP: `http://127.0.0.1:8889`
 - MediaMTX RTSP ingest: `rtsp://127.0.0.1:8554`
 - MediaMTX API: `http://127.0.0.1:9997`
-- Rerun gRPC: `rerun+http://127.0.0.1:9876/proxy`
-- Rerun web viewer: `http://localhost:9090`
 
-## Server endpoints
+## Split runner model
+
+- `tc-gui` - runs Rerun viewer + FastAPI (`telemetry_console.gui_api`).
+- `tc-camera` - owns DepthAI device access and publishes relay streams to MediaMTX.
+- `tc-recorder` - recording service process.
+- `tc-replay` - replays Zarr logs into Rerun.
+- `tc-robot` - robot loop enabled by default (`RUN_ROBOT_RUNNER=0 make dev` to skip).
+
+```mermaid
+flowchart LR
+  subgraph runnerStack[RunnerStack]
+    tcGui[tc-gui]
+    tcCamera[tc-camera]
+    tcRecorder[tc-recorder]
+    tcRobot[tc-robot]
+    tcReplay[tc-replay optional]
+  end
+
+  subgraph infraServices[InfraServices]
+    mediaMtx[MediaMTX]
+    rerunSvc[RerunServer]
+  end
+
+  subgraph frontend[Frontend]
+    vite[ViteApp]
+    webRtcHook[useWebRTC]
+  end
+
+  tcCamera --> mediaMtx
+  webRtcHook --> mediaMtx
+  tcGui --> rerunSvc
+  tcRobot --> rerunSvc
+  tcReplay --> rerunSvc
+  tcGui --> tcRecorder
+  vite --> tcGui
+```
+
+## API endpoints (GUI API)
 
 - `GET /health`
 - `GET /rerun/status`
@@ -30,103 +69,35 @@ recording, and visualization.
 - `POST /recording/start`
 - `POST /recording/stop`
 
-## Camera streaming architecture (current)
+## Camera and recording flow
 
-The camera path is relay-only on the host:
-
-1. DepthAI camera outputs encoded bitstream (`H264` by default).
-2. Host relays encoded packets to MediaMTX via `ffmpeg -c:v copy` (no host encode).
-3. Browser connects directly to MediaMTX via WHEP (`POST /<camera>/whep`).
-4. Client renders one `RTCPeerConnection` per camera tile.
-
-```mermaid
-flowchart LR
-  subgraph Device[OAK Device]
-    ISP[Camera ISP]
-    ENC[DepthAI VideoEncoder<br/>H264 default]
-    ISP --> ENC
-  end
-
-  subgraph Host[Host]
-    API[FastAPI<br/>/webrtc/cameras]
-    RELAY[webrtc.py<br/>relay publishers]
-    FFMPEG[ffmpeg<br/>-c:v copy]
-    MTX[MediaMTX]
-    REC[RecordingManager]
-    DEC[PyAV decode tap<br/>(recording only)]
-    ZARR[Zarr logs]
-
-    API --> RELAY
-    RELAY --> FFMPEG --> MTX
-    RELAY --> DEC --> REC --> ZARR
-  end
-
-  subgraph Browser[Frontend]
-    HOOK[useWebRTC hook]
-    UI[VideoPanel grid]
-    HOOK --> UI
-  end
-
-  HOOK -->|GET /webrtc/cameras| API
-  HOOK -->|POST SDP offer to /cam_x/whep| MTX
-  MTX -->|WebRTC media| UI
-```
-
-## Recording path
-
-Recording is decoupled from streaming delivery:
-
-- Streaming relay always forwards encoded packets to MediaMTX.
-- When recording is active, relay publisher decodes packets with PyAV and appends
-  RGB frames + timestamps into per-camera Zarr logs.
-- Recording decode is host-side, but only for logging; no streaming encode occurs
-  on the host.
-
-```mermaid
-flowchart LR
-  PKT[Encoded packet from DepthAI queue]
-  PKT --> PUSH[ffmpeg relay push]
-  PKT --> TAP{Recording active?}
-  TAP -->|No| SKIP[Skip decode]
-  TAP -->|Yes| DECODE[PyAV decode to RGB]
-  DECODE --> LOG[ZarrEpisodeLogger.append]
-```
-
-## Client architecture
-
-- `VideoPanel` uses `useWebRTC`.
-- Hook calls `GET /webrtc/cameras`.
-- Hook creates one peer connection per camera and negotiates with MediaMTX WHEP.
-- Hook waits for ICE gathering completion before POSTing local SDP to reduce
-  race-related negotiation failures.
-
-## Camera connection sequence
+1. `tc-camera` discovers connected OAK sockets and starts encoded relay publishers.
+2. Relay packets are forwarded to MediaMTX over RTSP (`copy` passthrough).
+3. Client hook fetches `/webrtc/cameras`, then negotiates WHEP directly with MediaMTX.
+4. Recording API is exposed from `tc-gui`; recorder storage is managed in runner modules.
 
 ```mermaid
 sequenceDiagram
-  participant UI as Browser (useWebRTC)
-  participant API as FastAPI (/webrtc/cameras)
-  participant RELAY as webrtc.ensure_streaming
+  participant Browser as Browser
+  participant GuiApi as GuiApi
+  participant CameraRunner as tc-camera
   participant MTX as MediaMTX
-  participant CAM as OAK cameras
 
-  UI->>API: GET /webrtc/cameras
-  API->>RELAY: ensure_streaming(recording_manager=...)
-  RELAY->>CAM: start/ensure encoded pipeline
-  RELAY->>MTX: publish encoded RTSP (ffmpeg copy)
-  RELAY-->>API: active sockets
-  API-->>UI: ["CAM_A", "CAM_B", ...]
-
+  Browser->>GuiApi: GET /webrtc/cameras
+  GuiApi-->>Browser: ["CAM_B","CAM_A","CAM_C"]
+  CameraRunner->>MTX: publish RTSP cam_a cam_b cam_c
   loop per camera
-    UI->>MTX: POST /cam_x/whep (offer SDP)
-    MTX-->>UI: answer SDP
-    MTX-->>UI: WebRTC track
+    Browser->>MTX: POST /cam_x/whep
+    MTX-->>Browser: SDP answer and media track
   end
 ```
 
-## Notes
+## Development guard behavior
 
-- Legacy `aiortc` server offer/answer signaling path is removed.
-- Browser compatibility is best with `H264` default relay codec.
-- `H265/HEVC` can still be enabled via relay codec config when target clients
-  support it.
+`make dev` keeps startup reliability checks enabled:
+
+- pre-cleanup of stale ports/listeners
+- WebRTC relay-path guard (`scripts/check_camera_live_webrtc.py`)
+- GUI tile guard + snapshot (`scripts/check_camera_live_gui.mjs`)
+
+If guards fail, startup exits non-zero.

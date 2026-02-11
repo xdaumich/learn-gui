@@ -5,6 +5,20 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #23
+
+- 🎯 **Goal:** Restore live trajectory/3D robot updates in `make dev` and fail startup early when robot telemetry is missing.
+- 📝 **Description:** Updated split-runner startup so `tc-robot` runs by default and connects to the existing GUI-hosted Rerun gRPC session (no second viewer bind), added robot heartbeat publishing in `tc-robot`, exposed `/robot/status` from GUI API, and extended `scripts/check_camera_live_webrtc.py` to require live robot heartbeat in addition to camera relay readiness.
+- 🧪 **Test:** `make dev` — pass (`camera-guard:webrtc` relay 3/3 ready + robot heartbeat live, `camera-guard:gui` 3/3 live tiles, snapshot updated).
+- 🔄 **Integration / Regression:** `make test` — pass (client: 5/5 vitest, server: 46/46 pytest).
+
+## ✨ Feature #22 | 🐛 Bug Fix #22
+
+- 🎯 **Goal:** Land the SDK refactor milestones (split runners + compatibility shims) without regressing startup guards or test stability.
+- 📝 **Description:** Implemented `telemetry_console` module set (`zmq_channels`, `viewer`, `camera`, `env`, `recorder`, `replay`, `gui_api`, `cli`, `schemas`), added `tc-*` entry points in `server/pyproject.toml`, switched legacy modules (`main.py`, `webrtc.py`, `schemas.py`, `robot_env.py`) to compatibility shims, expanded server coverage for new modules, and updated dev orchestration (`scripts/dev.sh`, `Makefile`) to run split services while preserving pre-cleanup and camera guard checks. Also fixed split-runner startup reliability issues (Rerun port contention and stale runner cleanup for ZMQ ports/processes).
+- 🧪 **Test:** `make test` — pass (client: 5/5 vitest, server: 40/40 pytest).
+- 🔄 **Integration / Regression:** `make dev` — pass (`camera-guard:webrtc` relay paths 3/3 ready, `camera-guard:gui` live tiles 3/3, snapshot updated).
+
 ## ✨ Feature #21 | 🐛 Bug Fix #21
 
 - 🎯 **Goal:** Remove hacky scaffolding and placeholder behavior across client/server/scripts to keep the codebase compact, minimal, and easier to maintain.
