@@ -5,7 +5,7 @@ requires-python = "==3.10.*"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "aiortc",
+    "av",
     "opencv-python",
     "rerun-sdk",
     "pydantic",

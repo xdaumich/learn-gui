@@ -147,6 +147,10 @@ class RecordingManager:
     def run_id(self) -> str | None:
         return self._run_id
 
+    def is_active(self) -> bool:
+        with self._lock:
+            return self._active
+
     def status(self) -> RecordingState:
         return RecordingState(
             active=self._active,

@@ -6,7 +6,7 @@ WebRTC camera viewer + Rerun trajectory viewer with synchronized timeline.
 
 ```
 client/          React + Vite frontend
-server/          FastAPI backend (WebRTC signaling, Rerun bridge)
+server/          FastAPI backend (camera relay control, Rerun bridge)
 tests/           All tests (client + server)
 external/        Git submodules (depthai-core, rerun, dexmate-urdf)
 scripts/         Dev scripts (setup, dev, lint)
@@ -37,7 +37,7 @@ uv run --project server python scripts/run_camera.py  # local OAK camera windows
 `make dev` now runs a regression guard that checks camera readiness across:
 
 - API discovery (`/health`, `/webrtc/cameras`)
-- WebRTC frame delivery (`/webrtc/offer`)
+- Relay path readiness (MediaMTX API `/v3/paths/list`)
 - GUI rendering (headless browser validates live tiles)
 
 If any camera is not live before timeout, `make dev` exits non-zero and prints
@@ -95,6 +95,10 @@ data_logs/<run_id>/<camera>.zarr/
 ```
 
 Set `DATA_LOG_DIR` to override the output path.
+
+Camera relay defaults to device-side `H264` for broad browser compatibility
+(Chrome, Firefox, Safari). The host stays relay-only for streaming and only
+decodes on the recording path when recording is active.
 
 ## External dependencies
 

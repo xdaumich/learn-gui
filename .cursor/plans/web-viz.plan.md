@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #19
+
+- 🎯 **Goal:** Finalize relay-only camera streaming with recording decode tap and remove legacy aiortc signaling path.
+- 📝 **Description:** Removed server-side aiortc offer/answer track plumbing, kept DepthAI-to-MediaMTX relay as the only streaming path, added relay packet decode tap for recording-active Zarr logging, simplified relay/client guard code paths for readability, and refreshed infra/readme docs to reflect WHEP + H264-default behavior.
+- 🧪 **Test:** `make test` — pass (client: 5/5 vitest, server: 19/19 pytest).
+- 🔄 **Integration / Regression:** `make dev` — pass (`camera-guard:webrtc` 3/3 relay paths ready, `camera-guard:gui` 3/3 live tiles).
+
 ## 🐛 Bug Fix #20
 
 - 🎯 **Goal:** Make every `make dev` run clean stale listeners/processes first so ghost background processes do not leak across runs.
