@@ -2,11 +2,19 @@ import { useCallback, useRef, useState } from "react";
 
 type WebRTCState = RTCPeerConnectionState | "idle";
 type StreamEntry = { id: string; stream: MediaStream };
-type CameraCountInfo = { transceiverCount: number; expectedCameraCount: number | null };
+type PeerEntry = { id: string; pc: RTCPeerConnection };
 
-const SIGNALING_URL = "http://localhost:8000/webrtc/offer";
-const CAMERAS_URL = "http://localhost:8000/webrtc/cameras";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const WHEP_BASE_URL = import.meta.env.VITE_WHEP_BASE_URL ?? "http://localhost:8889";
+const CAMERAS_URL = `${API_BASE_URL}/webrtc/cameras`;
 const PARTIAL_LIVE_GRACE_MS = Number(import.meta.env.VITE_CAMERA_LIVE_GRACE_MS ?? "4000");
+const WHEP_CONNECT_RETRY_MS = Number(import.meta.env.VITE_WHEP_CONNECT_RETRY_MS ?? "400");
+const WHEP_CONNECT_TIMEOUT_MS = Number(import.meta.env.VITE_WHEP_CONNECT_TIMEOUT_MS ?? "12000");
+const ICE_GATHER_TIMEOUT_MS = Number(import.meta.env.VITE_ICE_GATHER_TIMEOUT_MS ?? "2000");
+
+function isWhepRetryableStatus(status: number): boolean {
+  return status === 404 || status === 425 || status === 503;
+}
 
 function stopStreamTracks(entries: StreamEntry[]): void {
   entries.forEach((entry) => {
@@ -14,8 +22,79 @@ function stopStreamTracks(entries: StreamEntry[]): void {
   });
 }
 
+function streamPathForCamera(cameraName: string): string {
+  return cameraName.toLowerCase();
+}
+
+function whepUrlForCamera(cameraName: string): string {
+  const streamPath = encodeURIComponent(streamPathForCamera(cameraName));
+  return `${WHEP_BASE_URL}/${streamPath}/whep`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
+}
+
+async function waitForIceGatheringComplete(
+  pc: RTCPeerConnection,
+  timeoutMs: number,
+): Promise<void> {
+  if (pc.iceGatheringState === "complete") {
+    return;
+  }
+  if (typeof pc.addEventListener !== "function") {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const cleanup = () => {
+      if (done) {
+        return;
+      }
+      done = true;
+      clearTimeout(timer);
+      pc.removeEventListener("icegatheringstatechange", onStateChange);
+      resolve();
+    };
+    const onStateChange = () => {
+      if (pc.iceGatheringState === "complete") {
+        cleanup();
+      }
+    };
+    const timer = setTimeout(cleanup, Math.max(0, timeoutMs));
+    pc.addEventListener("icegatheringstatechange", onStateChange);
+    onStateChange();
+  });
+}
+
+function summarizeConnectionState(peers: PeerEntry[]): WebRTCState {
+  if (peers.length === 0) {
+    return "idle";
+  }
+  const states = peers.map((entry) => entry.pc.connectionState);
+  if (states.some((state) => state === "failed")) {
+    return "failed";
+  }
+  if (states.some((state) => state === "connected")) {
+    return "connected";
+  }
+  if (states.some((state) => state === "connecting" || state === "new")) {
+    return "connecting";
+  }
+  if (states.some((state) => state === "disconnected")) {
+    return "disconnected";
+  }
+  if (states.every((state) => state === "closed")) {
+    return "closed";
+  }
+  return "disconnected";
+}
+
 export function useWebRTC() {
-  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const peersRef = useRef<PeerEntry[]>([]);
   const streamsRef = useRef<StreamEntry[]>([]);
   const connectTokenRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -38,14 +117,14 @@ export function useWebRTC() {
     abortRef.current?.abort();
     abortRef.current = null;
 
-    const pc = peerRef.current;
-    peerRef.current = null;
+    const peers = peersRef.current;
+    peersRef.current = [];
 
-    if (pc) {
+    peers.forEach(({ pc }) => {
       pc.ontrack = null;
       pc.onconnectionstatechange = null;
       pc.close();
-    }
+    });
 
     stopStreamTracks(streamsRef.current);
     streamsRef.current = [];
@@ -53,11 +132,21 @@ export function useWebRTC() {
     setExpectedCameraCount(null);
     clearPartialLiveTimer();
     setPartialLiveGateOpen(false);
-    setConnectionState(pc ? "disconnected" : "idle");
+    setConnectionState(peers.length > 0 ? "disconnected" : "idle");
+  }, [clearPartialLiveTimer]);
+
+  const syncConnectionState = useCallback(() => {
+    const state = summarizeConnectionState(peersRef.current);
+    setConnectionState(state);
+    clearPartialLiveTimer();
+    setPartialLiveGateOpen(false);
+    if (state === "connected") {
+      partialLiveTimerRef.current = setTimeout(() => setPartialLiveGateOpen(true), PARTIAL_LIVE_GRACE_MS);
+    }
   }, [clearPartialLiveTimer]);
 
   const connect = useCallback(async () => {
-    if (peerRef.current) {
+    if (peersRef.current.length > 0) {
       return;
     }
 
@@ -66,20 +155,18 @@ export function useWebRTC() {
     connectTokenRef.current += 1;
     const token = connectTokenRef.current;
 
-    const pc = new RTCPeerConnection();
-    peerRef.current = pc;
     setConnectionState("connecting");
 
     function isCurrent(): boolean {
-      return peerRef.current === pc && connectTokenRef.current === token;
+      return connectTokenRef.current === token;
     }
 
     function isActive(): boolean {
       return isCurrent() && !controller.signal.aborted;
     }
 
-    function addTrackStream(track: MediaStreamTrack): void {
-      const trackId = track.id;
+    function addTrackStream(track: MediaStreamTrack, cameraName: string): void {
+      const trackId = `${cameraName}:${track.id}`;
       setStreams((prev) => {
         if (prev.some((entry) => entry.id === trackId)) {
           return prev;
@@ -90,113 +177,121 @@ export function useWebRTC() {
       });
     }
 
-    async function fetchCameraCount(): Promise<CameraCountInfo | null> {
+    async function fetchCameraNames(): Promise<string[] | null> {
       try {
         const response = await fetch(CAMERAS_URL, { signal: controller.signal });
         const cameras = await response.json();
         if (!isActive()) {
           return null;
         }
-        if (Array.isArray(cameras) && cameras.length > 0) {
-          return { transceiverCount: cameras.length, expectedCameraCount: cameras.length };
+        if (!Array.isArray(cameras)) {
+          return [];
         }
-        return { transceiverCount: 1, expectedCameraCount: null };
+        return cameras.filter((camera): camera is string => typeof camera === "string");
       } catch {
         if (!isActive()) {
           return null;
         }
-        return { transceiverCount: 1, expectedCameraCount: null };
+        return [];
       }
     }
 
-    function addVideoTransceivers(count: number): void {
-      const capabilities = RTCRtpReceiver.getCapabilities?.("video");
-      const h264Codecs =
-        capabilities?.codecs?.filter((codec) => codec.mimeType?.toLowerCase().includes("h264")) ??
-        [];
+    async function connectCamera(cameraName: string): Promise<void> {
+      const pc = new RTCPeerConnection();
+      const peer: PeerEntry = { id: cameraName, pc };
+      peersRef.current = [...peersRef.current, peer];
 
-      for (let i = 0; i < count; i += 1) {
-        if (!isActive() || pc.signalingState === "closed") {
+      pc.ontrack = (event) => {
+        if (!isActive()) {
           return;
         }
-        const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
-        if (h264Codecs.length > 0 && transceiver.setCodecPreferences) {
-          transceiver.setCodecPreferences(h264Codecs);
+        addTrackStream(event.track, cameraName);
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (!isActive()) {
+          return;
         }
-      }
-    }
+        syncConnectionState();
+        if (pc.connectionState === "failed") {
+          disconnect();
+        }
+      };
 
-    pc.ontrack = (event) => {
-      if (!isActive()) {
-        return;
-      }
-      addTrackStream(event.track);
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (!isActive()) {
-        return;
-      }
-      setConnectionState(pc.connectionState);
-      if (pc.connectionState === "connected") {
-        clearPartialLiveTimer();
-        setPartialLiveGateOpen(false);
-        partialLiveTimerRef.current = setTimeout(() => {
-          if (isActive()) {
-            setPartialLiveGateOpen(true);
-          }
-        }, PARTIAL_LIVE_GRACE_MS);
-      } else {
-        clearPartialLiveTimer();
-        setPartialLiveGateOpen(false);
-      }
-      if (pc.connectionState === "failed") {
-        disconnect();
-      }
-    };
-
-    try {
-      setExpectedCameraCount(null);
-      clearPartialLiveTimer();
-      setPartialLiveGateOpen(false);
-      const cameraCountInfo = await fetchCameraCount();
-      if (cameraCountInfo === null) {
-        return;
-      }
-      setExpectedCameraCount(cameraCountInfo.expectedCameraCount);
-      addVideoTransceivers(cameraCountInfo.transceiverCount);
-      if (!isActive()) {
-        return;
-      }
-
+      pc.addTransceiver("video", { direction: "recvonly" });
       const offer = await pc.createOffer();
       if (!isActive()) {
         return;
       }
       await pc.setLocalDescription(offer);
+      await waitForIceGatheringComplete(pc, ICE_GATHER_TIMEOUT_MS);
       if (!isActive()) {
         return;
       }
 
-      const response = await fetch(SIGNALING_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({ sdp: offer.sdp, type: offer.type }),
-      });
-      const answer = await response.json();
+      const streamUrl = whepUrlForCamera(cameraName);
+      const deadline = Date.now() + WHEP_CONNECT_TIMEOUT_MS;
+      let response: Response | null = null;
+      while (isActive()) {
+        response = await fetch(streamUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+          signal: controller.signal,
+          body: pc.localDescription?.sdp ?? offer.sdp ?? "",
+        });
+        if (response.ok) {
+          break;
+        }
+        const isRetryable = isWhepRetryableStatus(response.status);
+        if (!isRetryable || Date.now() >= deadline) {
+          throw new Error(`WHEP request failed (${response.status})`);
+        }
+        await delay(WHEP_CONNECT_RETRY_MS);
+      }
+      if (!isActive()) {
+        return;
+      }
+      if (!response || !response.ok) {
+        throw new Error(`WHEP request for ${cameraName} timed out waiting for stream availability.`);
+      }
+      const answerSdp = await response.text();
+      if (!answerSdp) {
+        throw new Error("WHEP request returned empty SDP answer.");
+      }
 
       if (!isActive()) {
         return;
       }
-      await pc.setRemoteDescription(answer);
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    }
+
+    try {
+      const cameraNames = await fetchCameraNames();
+      if (cameraNames === null) {
+        return;
+      }
+      if (cameraNames.length === 0) {
+        setExpectedCameraCount(0);
+        setConnectionState("disconnected");
+        return;
+      }
+      setExpectedCameraCount(cameraNames.length);
+
+      for (const cameraName of cameraNames) {
+        if (!isActive()) {
+          return;
+        }
+        await connectCamera(cameraName);
+      }
+
+      if (isActive()) {
+        syncConnectionState();
+      }
     } catch (error) {
       // If this attempt is obsolete (StrictMode/HMR remount), don't tear down the current PC.
       if (!isActive()) {
         return;
       }
-      clearPartialLiveTimer();
-      setPartialLiveGateOpen(false);
       disconnect();
       throw error;
     } finally {
@@ -204,7 +299,7 @@ export function useWebRTC() {
         abortRef.current = null;
       }
     }
-  }, [clearPartialLiveTimer, disconnect]);
+  }, [disconnect, syncConnectionState]);
 
   const partialLive =
     connectionState === "connected" &&

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,9 +12,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from data_log import RecordingManager
 import rerun_bridge
 import webrtc
-from schemas import RecordingStatus, SDPOffer, SDPAnswer
+from schemas import RecordingStatus
 
-app = FastAPI(title="Telemetry Console API")
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    yield
+    webrtc.stop_streaming()
+
+
+app = FastAPI(title="Telemetry Console API", lifespan=_app_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,43 +61,25 @@ async def rerun_status():
     }
 
 
-@app.post("/webrtc/offer", response_model=SDPAnswer)
-async def webrtc_offer(offer: SDPOffer) -> SDPAnswer:
-    track_factory = getattr(app.state, "track_factory", None)
-    camera_sockets = getattr(app.state, "camera_sockets", None)
-    answer, pc = await webrtc.create_answer(
-        offer.sdp,
-        offer.type,
-        camera_sockets=camera_sockets,
-        track_factory=track_factory,
-        recording_manager=_get_recording_manager(),
-    )
-
-    if not hasattr(app.state, "peer_connections"):
-        app.state.peer_connections = set()
-    app.state.peer_connections.add(pc)
-
-    @pc.on("connectionstatechange")
-    async def on_connectionstatechange() -> None:
-        if pc.connectionState in ("failed", "closed", "disconnected"):
-            await pc.close()
-            app.state.peer_connections.discard(pc)
-
-    @pc.on("iceconnectionstatechange")
-    async def on_iceconnectionstatechange() -> None:
-        if pc.iceConnectionState == "failed":
-            await pc.close()
-            app.state.peer_connections.discard(pc)
-
-    return SDPAnswer(sdp=answer.sdp, type=answer.type)
-
-
 @app.get("/webrtc/cameras")
 async def webrtc_cameras() -> list[str]:
     camera_sockets = getattr(app.state, "camera_sockets", None)
     if camera_sockets is None:
         camera_sockets = webrtc.list_camera_sockets()
-    return [socket.name for socket in camera_sockets]
+    if not camera_sockets:
+        return []
+
+    recording_manager = _get_recording_manager()
+    try:
+        active_sockets = webrtc.ensure_streaming(
+            camera_sockets=camera_sockets,
+            recording_manager=recording_manager,
+        )
+    except ValueError as exc:
+        print(f"[webrtc] Failed to initialize camera relay: {exc}")
+        return []
+
+    return [socket.name for socket in active_sockets]
 
 
 @app.get("/recording/status", response_model=RecordingStatus)

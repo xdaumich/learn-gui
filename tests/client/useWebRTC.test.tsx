@@ -1,8 +1,10 @@
 import { render, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { useEffect } from "react";
 
 import { useWebRTC } from "../../client/src/hooks/useWebRTC";
+
+type HookApi = ReturnType<typeof useWebRTC>;
 
 class FakeRTCPeerConnection {
   static instances: FakeRTCPeerConnection[] = [];
@@ -16,7 +18,7 @@ class FakeRTCPeerConnection {
   transceivers: Array<{
     kind: string;
     init?: RTCRtpTransceiverInit;
-    setCodecPreferences?: (codecs: RTCRtpCodecCapability[]) => void;
+    setCodecPreferences?: (codecs: unknown[]) => void;
   }> = [];
 
   constructor() {
@@ -74,14 +76,13 @@ function Harness({ onReady }: { onReady: (api: ReturnType<typeof useWebRTC>) => 
 }
 
 describe("useWebRTC", () => {
-  test("connect negotiates an offer and updates connection state", async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test("connect negotiates WHEP and updates connection state", async () => {
     FakeRTCPeerConnection.instances = [];
     vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
-    vi.stubGlobal("RTCRtpReceiver", {
-      getCapabilities: () => ({
-        codecs: [{ mimeType: "video/H264" }],
-      }),
-    });
     vi.stubGlobal("MediaStream", FakeMediaStream);
 
     const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -91,40 +92,63 @@ describe("useWebRTC", () => {
         });
       }
       return Promise.resolve({
-        json: async () => ({ type: "answer", sdp: "answer-sdp" }),
+        ok: true,
+        status: 201,
+        text: async () => "answer-sdp",
       });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    let api: ReturnType<typeof useWebRTC> | null = null;
-    render(<Harness onReady={(value) => (api = value)} />);
-
-    expect(api?.connectionState).toBe("idle");
-    await api?.connect();
+    const apiRef: { current: HookApi | null } = { current: null };
+    render(
+      <Harness
+        onReady={(value) => {
+          apiRef.current = value;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(apiRef.current).not.toBeNull();
+    });
+    expect((apiRef.current as HookApi).connectionState).toBe("idle");
+    await (apiRef.current as HookApi).connect();
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/webrtc/cameras",
       expect.objectContaining({ signal: expect.anything() }),
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/webrtc/offer",
+      "http://localhost:8889/cam_a/whep",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8889/cam_b/whep",
       expect.objectContaining({
         method: "POST",
       }),
     );
     await waitFor(() => {
-      expect(api?.connectionState).toBe("connected");
+      expect((apiRef.current as HookApi).connectionState).toBe("connected");
     });
-    expect(api?.expectedCameraCount).toBe(2);
-    expect(api?.partialLive).toBe(false);
+    expect((apiRef.current as HookApi).expectedCameraCount).toBe(2);
+    expect((apiRef.current as HookApi).partialLive).toBe(false);
 
-    const pc = FakeRTCPeerConnection.instances[0];
-    expect(pc.transceivers).toHaveLength(2);
-    pc.ontrack?.({ track: { id: "track-1" } as MediaStreamTrack, streams: [] } as RTCTrackEvent);
-    pc.ontrack?.({ track: { id: "track-2" } as MediaStreamTrack, streams: [] } as RTCTrackEvent);
+    const firstPc = FakeRTCPeerConnection.instances[0];
+    const secondPc = FakeRTCPeerConnection.instances[1];
+    expect(firstPc.transceivers).toHaveLength(1);
+    expect(secondPc.transceivers).toHaveLength(1);
+    firstPc.ontrack?.(
+      { track: { id: "track-1" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
+    );
+    secondPc.ontrack?.(
+      { track: { id: "track-2" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
+    );
 
     await waitFor(() => {
-      expect(api?.streams).toHaveLength(2);
+      expect((apiRef.current as HookApi).streams).toHaveLength(2);
     });
   });
 
@@ -133,11 +157,6 @@ describe("useWebRTC", () => {
     async () => {
       FakeRTCPeerConnection.instances = [];
       vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
-      vi.stubGlobal("RTCRtpReceiver", {
-        getCapabilities: () => ({
-          codecs: [{ mimeType: "video/H264" }],
-        }),
-      });
       vi.stubGlobal("MediaStream", FakeMediaStream);
 
       const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -147,32 +166,45 @@ describe("useWebRTC", () => {
           });
         }
         return Promise.resolve({
-          json: async () => ({ type: "answer", sdp: "answer-sdp" }),
+          ok: true,
+          status: 201,
+          text: async () => "answer-sdp",
         });
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      let api: ReturnType<typeof useWebRTC> | null = null;
-      render(<Harness onReady={(value) => (api = value)} />);
-
-      await api?.connect();
-
+      const apiRef: { current: HookApi | null } = { current: null };
+      render(
+        <Harness
+          onReady={(value) => {
+            apiRef.current = value;
+          }}
+        />,
+      );
       await waitFor(() => {
-        expect(api?.connectionState).toBe("connected");
-        expect(api?.expectedCameraCount).toBe(2);
+        expect(apiRef.current).not.toBeNull();
       });
 
-      const pc = FakeRTCPeerConnection.instances[0];
-      pc.ontrack?.({ track: { id: "track-1" } as MediaStreamTrack, streams: [] } as RTCTrackEvent);
+      await (apiRef.current as HookApi).connect();
 
       await waitFor(() => {
-        expect(api?.streams).toHaveLength(1);
-        expect(api?.partialLive).toBe(false);
+        expect((apiRef.current as HookApi).connectionState).toBe("connected");
+        expect((apiRef.current as HookApi).expectedCameraCount).toBe(2);
+      });
+
+      const firstPc = FakeRTCPeerConnection.instances[0];
+      firstPc.ontrack?.(
+        { track: { id: "track-1" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
+      );
+
+      await waitFor(() => {
+        expect((apiRef.current as HookApi).streams).toHaveLength(1);
+        expect((apiRef.current as HookApi).partialLive).toBe(false);
       });
 
       await new Promise((resolve) => setTimeout(resolve, 4500));
       await waitFor(() => {
-        expect(api?.partialLive).toBe(true);
+        expect((apiRef.current as HookApi).partialLive).toBe(true);
       });
     },
     12000,
