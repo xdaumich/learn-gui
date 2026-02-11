@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import os
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from data_log import RecordingManager
 import rerun_bridge
 import webrtc
 from schemas import RecordingStatus
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -47,6 +50,15 @@ def _get_recording_manager() -> RecordingManager:
     return manager
 
 
+def _recording_status_from_state(state) -> RecordingStatus:
+    return RecordingStatus(
+        active=state.active,
+        run_id=state.run_id,
+        samples=state.samples,
+        state=state.state,
+    )
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -76,8 +88,8 @@ async def webrtc_cameras() -> list[str]:
             recording_manager=recording_manager,
         )
     except ValueError as exc:
-        print(f"[webrtc] Failed to initialize camera relay: {exc}")
-        return []
+        logger.warning("Failed to initialize camera relay: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return [socket.name for socket in active_sockets]
 
@@ -85,19 +97,19 @@ async def webrtc_cameras() -> list[str]:
 @app.get("/recording/status", response_model=RecordingStatus)
 async def recording_status() -> RecordingStatus:
     state = _get_recording_manager().status()
-    return RecordingStatus(**state.__dict__)
+    return _recording_status_from_state(state)
 
 
 @app.post("/recording/start", response_model=RecordingStatus)
 async def recording_start() -> RecordingStatus:
     state = _get_recording_manager().start()
-    return RecordingStatus(**state.__dict__)
+    return _recording_status_from_state(state)
 
 
 @app.post("/recording/stop", response_model=RecordingStatus)
 async def recording_stop() -> RecordingStatus:
     state = _get_recording_manager().stop()
-    return RecordingStatus(**state.__dict__)
+    return _recording_status_from_state(state)
 
 
 # TODO: add telemetry ingestion routes

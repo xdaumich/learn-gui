@@ -8,11 +8,14 @@ Provides helpers to:
 from __future__ import annotations
 
 import math
+import logging
 import time
 from pathlib import Path
 
 import rerun as rr
 import rerun.blueprint as rrb
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Default ports (match .env.example)
@@ -58,7 +61,7 @@ def load_vega_1p_model() -> Path | None:
 
     urdf_path = _vega_1p_urdf_path()
     if not urdf_path.is_file():
-        print(f"[rerun_bridge] URDF not found: {urdf_path}")
+        logger.warning("URDF not found: %s", urdf_path)
         _urdf_tree = None
         _robot_root = None
         return None
@@ -108,8 +111,8 @@ def start(
 
     _web_url = f"http://localhost:{web_port}"
     _running = True
-    print(f"[rerun_bridge] gRPC  → {server_uri}")
-    print(f"[rerun_bridge] Web   → {_web_url}")
+    logger.info("gRPC server started at %s", server_uri)
+    logger.info("Web viewer started at %s", _web_url)
     return _web_url
 
 

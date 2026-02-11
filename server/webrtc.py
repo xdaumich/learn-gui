@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import subprocess
 import threading
 import time
@@ -20,12 +21,17 @@ DEFAULT_RELAY_KEYFRAME_INTERVAL = 30
 DEFAULT_MEDIAMTX_RTSP_TEMPLATE = "rtsp://127.0.0.1:8554/{stream_name}"
 DEFAULT_FFMPEG_BIN = "ffmpeg"
 DEFAULT_RELAY_CODEC = "h264"
+FFMPEG_WAIT_TIMEOUT_S = 1.0
+RELAY_QUEUE_POLL_INTERVAL_S = 0.002
+PUBLISHER_JOIN_TIMEOUT_S = 2.0
+PUBLISHER_READY_TIMEOUT_S = 2.5
 
 _relay_lock = threading.Lock()
 _relay_pipeline: Optional[dai.Pipeline] = None
 _relay_queues: dict[dai.CameraBoardSocket, dai.DataOutputQueue] = {}
 _relay_publishers: dict[dai.CameraBoardSocket, "CameraRelayPublisher"] = {}
 _relay_codec: str | None = None
+logger = logging.getLogger(__name__)
 
 
 def list_camera_sockets() -> list[dai.CameraBoardSocket]:
@@ -114,14 +120,14 @@ def _close_ffmpeg_process(process: subprocess.Popen[bytes] | None) -> None:
         except OSError:
             pass
     try:
-        process.wait(timeout=1.0)
+        process.wait(timeout=FFMPEG_WAIT_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         process.terminate()
         try:
-            process.wait(timeout=1.0)
+            process.wait(timeout=FFMPEG_WAIT_TIMEOUT_S)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait(timeout=1.0)
+            process.wait(timeout=FFMPEG_WAIT_TIMEOUT_S)
 
 
 def _reset_relay_state_locked() -> None:
@@ -295,7 +301,7 @@ class CameraRelayPublisher(threading.Thread):
             while not self._stop_event.is_set():
                 packet = self._queue.tryGet()
                 if packet is None:
-                    time.sleep(0.002)
+                    time.sleep(RELAY_QUEUE_POLL_INTERVAL_S)
                     continue
                 payload = bytes(packet.getData())
                 if not payload:
@@ -350,22 +356,22 @@ class CameraRelayPublisher(threading.Thread):
             frames = decoder.decode(payload)
         except Exception as exc:
             self._recording_error = exc
-            print(f"[data_log] Failed to decode relay packet for recording: {exc}")
+            logger.warning("Failed to decode relay packet for recording: %s", exc)
             return
         if not frames:
             return
 
         first_frame = frames[0]
-        logger = manager.get_logger(
+        episode_logger = manager.get_logger(
             self._camera_socket.name,
             height=first_frame.shape[0],
             width=first_frame.shape[1],
         )
-        if logger is None:
+        if episode_logger is None:
             return
 
         for index, frame in enumerate(frames):
-            logger.append(frame, t_ns + index)
+            episode_logger.append(frame, t_ns + index)
 
 
 def ensure_streaming(
@@ -423,9 +429,9 @@ def ensure_streaming(
             active_publishers.append(publisher)
 
     for publisher in stale_publishers:
-        publisher.join(timeout=2.0)
+        publisher.join(timeout=PUBLISHER_JOIN_TIMEOUT_S)
     # Give relay publishers a brief window to emit first packets before clients connect.
-    deadline = time.monotonic() + 2.5
+    deadline = time.monotonic() + PUBLISHER_READY_TIMEOUT_S
     for publisher in active_publishers:
         remaining = max(0.0, deadline - time.monotonic())
         if remaining == 0.0:
@@ -444,4 +450,4 @@ def stop_streaming() -> None:
             publisher.stop()
         _stop_relay_pipeline_locked()
     for publisher in publishers:
-        publisher.join(timeout=2.0)
+        publisher.join(timeout=PUBLISHER_JOIN_TIMEOUT_S)

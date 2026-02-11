@@ -38,5 +38,5 @@ def test_webrtc_cameras_endpoint_returns_empty_when_relay_fails(monkeypatch) -> 
     client = TestClient(app)
 
     response = client.get("/webrtc/cameras")
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 503
+    assert response.json()["detail"] == "relay init failed"
