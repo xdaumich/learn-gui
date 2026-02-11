@@ -6,8 +6,14 @@ VITE_PORT="${VITE_PORT:-5173}"
 API_PORT="${API_PORT:-8000}"
 RERUN_GRPC_PORT="${RERUN_GRPC_PORT:-9876}"
 RERUN_WEB_PORT="${RERUN_WEB_PORT:-9090}"
+MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-8554}"
+MEDIAMTX_WHEP_PORT="${MEDIAMTX_WHEP_PORT:-8889}"
+MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-9997}"
+MEDIAMTX_CONFIG_PATH="${MEDIAMTX_CONFIG_PATH:-mediamtx.yml}"
 GUI_URL="${CAMERA_GUARD_GUI_URL:-http://localhost:${VITE_PORT}}"
+GUI_GUARD_BROWSER="${CAMERA_GUARD_GUI_BROWSER:-chromium}"
 DEV_SKIP_PRE_CLEANUP="${DEV_SKIP_PRE_CLEANUP:-0}"
+MEDIAMTX_BIN="$(command -v mediamtx || true)"
 
 list_listening_pids() {
   local port="$1"
@@ -79,6 +85,21 @@ cleanup_preexisting_ports() {
     kill_port_if_in_use "${port}" "${name}"
   done
 
+  if [[ -n "${MEDIAMTX_BIN}" ]]; then
+    for entry in \
+      "${MEDIAMTX_RTSP_PORT}:MediaMTX RTSP" \
+      "${MEDIAMTX_WHEP_PORT}:MediaMTX WHEP" \
+      "${MEDIAMTX_API_PORT}:MediaMTX API"
+    do
+      local port="${entry%%:*}"
+      local name="${entry#*:}"
+      if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+        cleaned_any=1
+      fi
+      kill_port_if_in_use "${port}" "${name}"
+    done
+  fi
+
   if [[ "${cleaned_any}" -eq 0 ]]; then
     echo "==> No stale listeners found on dev ports."
   fi
@@ -131,6 +152,11 @@ require_free_port "${VITE_PORT}" "Vite"
 require_free_port "${API_PORT}" "FastAPI"
 require_free_port "${RERUN_GRPC_PORT}" "Rerun gRPC"
 require_free_port "${RERUN_WEB_PORT}" "Rerun web"
+if [[ -n "${MEDIAMTX_BIN}" ]]; then
+  require_free_port "${MEDIAMTX_RTSP_PORT}" "MediaMTX RTSP"
+  require_free_port "${MEDIAMTX_WHEP_PORT}" "MediaMTX WHEP"
+  require_free_port "${MEDIAMTX_API_PORT}" "MediaMTX API"
+fi
 
 if [[ "${cleanup_only}" == "1" ]]; then
   echo "==> Dev port cleanup complete."
@@ -151,6 +177,20 @@ echo "==> Starting Rerun demo (trajectory + 3D model)..."
 uv run --project server python scripts/run_rerun_demo.py &
 PIDS+=("$!")
 
+if [[ -n "${MEDIAMTX_BIN}" ]]; then
+  if [[ -f "${MEDIAMTX_CONFIG_PATH}" ]]; then
+    echo "==> Starting MediaMTX relay with ${MEDIAMTX_CONFIG_PATH}..."
+    "${MEDIAMTX_BIN}" "${MEDIAMTX_CONFIG_PATH}" &
+  else
+    echo "==> MediaMTX config not found at ${MEDIAMTX_CONFIG_PATH}; starting defaults."
+    "${MEDIAMTX_BIN}" &
+  fi
+  PIDS+=("$!")
+else
+  echo "==> MediaMTX not found on PATH; relay mode is unavailable."
+  echo "    Install with: brew install mediamtx"
+fi
+
 if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
   echo "==> Running camera live guard (WebRTC)..."
   CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
@@ -159,6 +199,7 @@ if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
   echo "==> Running camera live guard (GUI + snapshot)..."
   CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
     CAMERA_GUARD_GUI_URL="${GUI_URL}" \
+    CAMERA_GUARD_GUI_BROWSER="${GUI_GUARD_BROWSER}" \
     node scripts/check_camera_live_gui.mjs
 else
   echo "==> SKIP_CAMERA_GUARD=1, skipping camera live guards."

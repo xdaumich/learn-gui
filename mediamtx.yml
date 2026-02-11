@@ -1,0 +1,15 @@
+rtsp: yes
+rtspAddress: :8554
+
+webrtc: yes
+webrtcAddress: :8889
+
+api: yes
+apiAddress: 127.0.0.1:9997
+
+rtmp: no
+hls: no
+srt: no
+
+paths:
+  all_others:
