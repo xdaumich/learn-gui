@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { useLayout } from "../contexts/LayoutContext";
+import { RERUN_WEB_URL } from "../config";
 import CompactHeader from "./CompactHeader";
 
-const RERUN_WEB_PORT = 9090;
-const RERUN_GRPC_PORT = 9876;
-const RERUN_WEB_URL = `http://localhost:${RERUN_WEB_PORT}?url=rerun%2Bhttp://localhost:${RERUN_GRPC_PORT}/proxy`;
+const RERUN_PANEL_PLACEHOLDER_METRICS: [string, string, string] = ["Wall time", "-- msg/s", "--"];
 
 export default function RerunPanel() {
-  const { mode } = useLayout();
-  const isZen = mode === "zen";
+  const { isZen } = useLayout();
   const [loaded, setLoaded] = useState(false);
 
   return (
@@ -17,7 +15,7 @@ export default function RerunPanel() {
         <CompactHeader
           chip="RERUN"
           chipVariant="rerun"
-          metrics={["Wall time", "-- msg/s", "--"]}
+          metrics={RERUN_PANEL_PLACEHOLDER_METRICS}
           focusTarget="rerun"
           focusKey="2"
         />

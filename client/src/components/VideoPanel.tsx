@@ -4,9 +4,10 @@ import { useWebRTC } from "../hooks/useWebRTC";
 import { useLayout } from "../contexts/LayoutContext";
 import CompactHeader from "./CompactHeader";
 
+const CAMERA_PANEL_PLACEHOLDER_METRICS: [string, string, string] = ["--:--:--", "-- fps", "-- ms"];
+
 export default function VideoPanel() {
-  const { mode } = useLayout();
-  const isZen = mode === "zen";
+  const { isZen } = useLayout();
   const {
     streams,
     connectionState,
@@ -72,7 +73,7 @@ export default function VideoPanel() {
         <CompactHeader
           chip="CAM"
           label="H264"
-          metrics={["--:--:--", "-- fps", "-- ms"]}
+          metrics={CAMERA_PANEL_PLACEHOLDER_METRICS}
           focusTarget="camera"
           focusKey="1"
         />

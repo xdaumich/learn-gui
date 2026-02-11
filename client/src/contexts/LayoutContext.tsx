@@ -4,6 +4,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  type JSX,
   type ReactNode,
 } from "react";
 
@@ -12,6 +13,8 @@ export type FocusTarget = "camera" | "rerun" | null;
 
 interface LayoutContextValue {
   mode: DisplayMode;
+  isZen: boolean;
+  isFocus: boolean;
   focusTarget: FocusTarget;
   splitRatio: number;
   setMode: (mode: DisplayMode) => void;
@@ -54,6 +57,8 @@ export function LayoutProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [mode, setModeRaw] = useState<DisplayMode>("zen");
   const [focusTarget, setFocusTarget] = useState<FocusTarget>(null);
   const [splitRatio, setSplitRatioRaw] = useState(loadSplit);
+  const isZen = mode === "zen";
+  const isFocus = mode === "focus";
 
   const setMode = useCallback((m: DisplayMode) => {
     setModeRaw(m);
@@ -131,6 +136,8 @@ export function LayoutProvider({ children }: { children: ReactNode }): JSX.Eleme
     <LayoutContext.Provider
       value={{
         mode,
+        isZen,
+        isFocus,
         focusTarget,
         splitRatio,
         setMode,

@@ -1,16 +1,18 @@
 import { useCallback, useRef, useState } from "react";
+import {
+  API_BASE_URL,
+  CAMERA_LIVE_GRACE_MS,
+  ICE_GATHER_TIMEOUT_MS,
+  WHEP_BASE_URL,
+  WHEP_CONNECT_RETRY_MS,
+  WHEP_CONNECT_TIMEOUT_MS,
+} from "../config";
 
 type WebRTCState = RTCPeerConnectionState | "idle";
 type StreamEntry = { id: string; stream: MediaStream };
 type PeerEntry = { id: string; pc: RTCPeerConnection };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-const WHEP_BASE_URL = import.meta.env.VITE_WHEP_BASE_URL ?? "http://localhost:8889";
 const CAMERAS_URL = `${API_BASE_URL}/webrtc/cameras`;
-const PARTIAL_LIVE_GRACE_MS = Number(import.meta.env.VITE_CAMERA_LIVE_GRACE_MS ?? "4000");
-const WHEP_CONNECT_RETRY_MS = Number(import.meta.env.VITE_WHEP_CONNECT_RETRY_MS ?? "400");
-const WHEP_CONNECT_TIMEOUT_MS = Number(import.meta.env.VITE_WHEP_CONNECT_TIMEOUT_MS ?? "12000");
-const ICE_GATHER_TIMEOUT_MS = Number(import.meta.env.VITE_ICE_GATHER_TIMEOUT_MS ?? "2000");
 
 function isWhepRetryableStatus(status: number): boolean {
   return status === 404 || status === 425 || status === 503;
@@ -141,7 +143,10 @@ export function useWebRTC() {
     clearPartialLiveTimer();
     setPartialLiveGateOpen(false);
     if (state === "connected") {
-      partialLiveTimerRef.current = setTimeout(() => setPartialLiveGateOpen(true), PARTIAL_LIVE_GRACE_MS);
+      partialLiveTimerRef.current = setTimeout(
+        () => setPartialLiveGateOpen(true),
+        CAMERA_LIVE_GRACE_MS,
+      );
     }
   }, [clearPartialLiveTimer]);
 

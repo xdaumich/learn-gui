@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { API_BASE_URL } from "../config";
 
-type RecordingPhase = "idle" | "starting" | "recording" | "stopping" | "error";
+export type RecordingPhase = "idle" | "starting" | "recording" | "stopping" | "error";
 
 type RecordingPayload = {
   active: boolean;
   run_id?: string | null;
-  state?: string;
-  samples?: number;
 };
 
-const RECORDING_STATUS_URL = "http://localhost:8000/recording/status";
-const RECORDING_START_URL = "http://localhost:8000/recording/start";
-const RECORDING_STOP_URL = "http://localhost:8000/recording/stop";
+const RECORDING_STATUS_URL = `${API_BASE_URL}/recording/status`;
+const RECORDING_START_URL = `${API_BASE_URL}/recording/start`;
+const RECORDING_STOP_URL = `${API_BASE_URL}/recording/stop`;
 
 function normalizePhase(active: boolean): RecordingPhase {
   return active ? "recording" : "idle";

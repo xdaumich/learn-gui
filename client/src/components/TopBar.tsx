@@ -1,11 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLayout } from "../contexts/LayoutContext";
 import { useRecording } from "../hooks/useRecording";
+import { TOPBAR_HOVER_DELAY_MS } from "../config";
 import ModeSwitcher from "./ModeSwitcher";
 
+const RECORDING_STATUS_LABELS: Record<string, string> = {
+  recording: "Recording",
+  starting: "Starting",
+  stopping: "Stopping",
+  error: "Error",
+  idle: "Idle",
+};
+
 export default function TopBar() {
-  const { mode } = useLayout();
-  const isZen = mode === "zen";
+  const { isZen } = useLayout();
   const { phase, runId, toggle: toggleRecording } = useRecording();
   const [hovered, setHovered] = useState(false);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -24,7 +32,7 @@ export default function TopBar() {
 
   const handleLeave = useCallback(() => {
     clearLeaveTimer();
-    leaveTimer.current = setTimeout(() => setHovered(false), 400);
+    leaveTimer.current = setTimeout(() => setHovered(false), TOPBAR_HOVER_DELAY_MS);
   }, [clearLeaveTimer]);
 
   const handleBarEnter = useCallback(() => {
@@ -37,16 +45,7 @@ export default function TopBar() {
   const isRecording = phase === "recording";
   const isWorking = phase === "starting" || phase === "stopping";
   const recordingLabel = isRecording ? "Stop" : "Rec";
-  const recordingStatus =
-    phase === "recording"
-      ? "Recording"
-      : phase === "starting"
-        ? "Starting"
-        : phase === "stopping"
-          ? "Stopping"
-          : phase === "error"
-            ? "Error"
-            : "Idle";
+  const recordingStatus = RECORDING_STATUS_LABELS[phase] ?? "Idle";
 
   return (
     <>
@@ -73,9 +72,6 @@ export default function TopBar() {
           Telemetry
         </div>
         <div className="control-group">
-          <button className="control-button" type="button">
-            Connect
-          </button>
           <button
             className={["control-button", isRecording && "is-recording"]
               .filter(Boolean)
@@ -88,17 +84,10 @@ export default function TopBar() {
           >
             {recordingLabel}
           </button>
-          <button className="control-button" type="button">
-            Pause
-          </button>
-          <button className="control-button is-live" type="button">
-            Live
-          </button>
         </div>
         <div className="status-group">
-          <span className="status-text">V: --</span>
-          <span className="status-text">R: {recordingStatus}</span>
-          <span className="status-text">S: --</span>
+          <span className="status-text">Rec: {recordingStatus}</span>
+          {runId && <span className="status-text">Run: {runId}</span>}
           <ModeSwitcher />
         </div>
       </header>

@@ -2,8 +2,8 @@ import { useLayout, type DisplayMode } from "../contexts/LayoutContext";
 
 const MODES: { id: DisplayMode; label: string; key: string }[] = [
   { id: "zen", label: "Zen", key: "Z" },
-  { id: "compact", label: "Compact", key: "Z" },
-  { id: "focus", label: "Focus", key: "F" },
+  { id: "compact", label: "Compact", key: "Esc" },
+  { id: "focus", label: "Focus", key: "F/1/2" },
 ];
 
 export default function ModeSwitcher() {

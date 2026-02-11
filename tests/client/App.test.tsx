@@ -6,12 +6,9 @@ describe("App layout", () => {
   test("starts in zen mode and shows controls in compact mode", () => {
     render(<App />);
 
-    // Zen mode: control buttons exist in DOM (topbar rendered but off-screen)
+    // Zen mode: recording control exists in DOM (topbar rendered but off-screen)
     expect(
-      screen.getByRole("button", { name: /connect/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /pause/i }),
+      screen.getByRole("button", { name: /rec/i }),
     ).toBeInTheDocument();
 
     // Content placeholders visible in zen
