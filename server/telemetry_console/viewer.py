@@ -32,6 +32,7 @@ RIGHT_ARM_JOINT_NAMES = tuple(f"R_arm_j{i}" for i in range(1, 8))
 ARM_JOINT_NAMES = LEFT_ARM_JOINT_NAMES + RIGHT_ARM_JOINT_NAMES
 DEFAULT_3D_CAMERA_POSITION = (1.0, 1.0, 1.0)
 DEFAULT_3D_CAMERA_LOOK_TARGET = (0.0, 0.0, 0.5)
+DEFAULT_TRAJECTORY_WINDOW_SECONDS = 2.0
 
 
 def _default_eye_controls() -> rrb.EyeControls3D:
@@ -39,6 +40,28 @@ def _default_eye_controls() -> rrb.EyeControls3D:
     return rrb.EyeControls3D(
         position=DEFAULT_3D_CAMERA_POSITION,
         look_target=DEFAULT_3D_CAMERA_LOOK_TARGET,
+    )
+
+
+def _default_time_panel() -> rrb.TimePanel:
+    """Return default time controls: compact panel and live-follow mode."""
+    return rrb.TimePanel(state="collapsed", play_state="Following")
+
+
+def _live_window_time_range(*, window_seconds: float) -> rr.TimeRange:
+    """Return a cursor-relative range for the initial live plot window."""
+    return rr.TimeRange(
+        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-window_seconds),
+        end=rrb.TimeRangeBoundary.cursor_relative(),
+    )
+
+
+def _full_history_visible_time_range() -> rrb.VisibleTimeRange:
+    """Return an unbounded visible time range so history drags stay populated."""
+    return rrb.VisibleTimeRange(
+        "wall_time",
+        start=rrb.TimeRangeBoundary.infinite(),
+        end=rrb.TimeRangeBoundary.infinite(),
     )
 
 
@@ -176,13 +199,12 @@ def _send_blueprint() -> None:
             rrb.TimeSeriesView(
                 origin="/trajectory",
                 name="Trajectory",
-                time_ranges=[
-                    rrb.VisibleTimeRange(
-                        "wall_time",
-                        start=rrb.TimeRangeBoundary.cursor_relative(seconds=-2.0),
-                        end=rrb.TimeRangeBoundary.cursor_relative(),
+                axis_x=rrb.TimeAxis(
+                    view_range=_live_window_time_range(
+                        window_seconds=DEFAULT_TRAJECTORY_WINDOW_SECONDS
                     ),
-                ],
+                ),
+                time_ranges=[_full_history_visible_time_range()],
             ),
             rrb.Tabs(
                 rrb.Spatial3DView(
@@ -201,6 +223,7 @@ def _send_blueprint() -> None:
             ),
             column_shares=[0.55, 0.45],
         ),
+        _default_time_panel(),
         collapse_panels=True,
     )
     rr.send_blueprint(blueprint, make_active=True, make_default=True)
@@ -216,13 +239,7 @@ def send_robot_blueprint(*, window_seconds: float = 5.0) -> None:
     right_contents = [f"/trajectory/cmd/{name}" for name in RIGHT_ARM_JOINT_NAMES] + [
         f"/trajectory/state/{name}" for name in RIGHT_ARM_JOINT_NAMES
     ]
-    time_ranges = [
-        rrb.VisibleTimeRange(
-            "wall_time",
-            start=rrb.TimeRangeBoundary.cursor_relative(seconds=-window_seconds),
-            end=rrb.TimeRangeBoundary.cursor_relative(),
-        ),
-    ]
+    time_ranges = [_full_history_visible_time_range()]
 
     blueprint = rrb.Blueprint(
         rrb.Horizontal(
@@ -231,12 +248,18 @@ def send_robot_blueprint(*, window_seconds: float = 5.0) -> None:
                     origin="/",
                     name="Left Arm Cmd vs State",
                     contents=left_contents,
+                    axis_x=rrb.TimeAxis(
+                        view_range=_live_window_time_range(window_seconds=window_seconds)
+                    ),
                     time_ranges=time_ranges,
                 ),
                 rrb.TimeSeriesView(
                     origin="/",
                     name="Right Arm Cmd vs State",
                     contents=right_contents,
+                    axis_x=rrb.TimeAxis(
+                        view_range=_live_window_time_range(window_seconds=window_seconds)
+                    ),
                     time_ranges=time_ranges,
                 ),
                 row_shares=[0.5, 0.5],
@@ -258,6 +281,7 @@ def send_robot_blueprint(*, window_seconds: float = 5.0) -> None:
             ),
             column_shares=[0.55, 0.45],
         ),
+        _default_time_panel(),
         collapse_panels=True,
     )
     rr.send_blueprint(blueprint, make_active=True, make_default=True)

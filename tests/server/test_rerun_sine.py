@@ -19,10 +19,33 @@ def _assert_default_eye_controls(view) -> None:
     assert eye_controls.look_target.as_arrow_array().to_pylist() == [[0.0, 0.0, 0.5]]
 
 
+def _assert_default_time_panel(blueprint) -> None:
+    assert hasattr(blueprint, "time_panel")
+    assert blueprint.time_panel.state == "collapsed"
+    assert blueprint.time_panel.play_state == "Following"
+
+
+def _assert_live_window_and_full_history(view, *, window_seconds: float) -> None:
+    time_axis = view.properties.get("TimeAxis")
+    assert time_axis is not None
+    assert time_axis.view_range is not None
+    assert time_axis.view_range.as_arrow_array().to_pylist() == [
+        {"start": int(-window_seconds * 1_000_000_000), "end": 0}
+    ]
+
+    visible_ranges = view.properties.get("VisibleTimeRanges")
+    assert visible_ranges is not None
+    assert visible_ranges.ranges is not None
+    assert visible_ranges.ranges.as_arrow_array().to_pylist() == [
+        {"timeline": "wall_time", "range": {"start": None, "end": None}}
+    ]
+
+
 def test_rerun_bridge_blueprint_layout(monkeypatch):
     """Ensure the default blueprint splits trajectory + 3D tabs horizontally."""
     import rerun.blueprint as rrb
     import rerun_bridge
+    from telemetry_console import viewer
 
     captured: dict[str, object] = {}
 
@@ -37,6 +60,7 @@ def test_rerun_bridge_blueprint_layout(monkeypatch):
     assert blueprint is not None
     assert isinstance(blueprint, rrb.Blueprint)
     assert blueprint.collapse_panels is True
+    _assert_default_time_panel(blueprint)
 
     root = blueprint.root_container
     assert isinstance(root, rrb.Horizontal)
@@ -44,6 +68,10 @@ def test_rerun_bridge_blueprint_layout(monkeypatch):
     assert isinstance(root.contents[0], rrb.TimeSeriesView)
     assert isinstance(root.contents[1], rrb.Tabs)
     assert root.contents[0].origin == "/trajectory"
+    _assert_live_window_and_full_history(
+        root.contents[0],
+        window_seconds=viewer.DEFAULT_TRAJECTORY_WINDOW_SECONDS,
+    )
     tabs = root.contents[1]
     tab_contents = list(tabs.contents)
     assert len(tab_contents) == 2
@@ -85,6 +113,7 @@ def test_rerun_bridge_robot_blueprint_layout(monkeypatch):
     blueprint = captured.get("blueprint")
     assert blueprint is not None
     assert isinstance(blueprint, rrb.Blueprint)
+    _assert_default_time_panel(blueprint)
 
     root = blueprint.root_container
     assert isinstance(root, rrb.Horizontal)
@@ -101,6 +130,8 @@ def test_rerun_bridge_robot_blueprint_layout(monkeypatch):
     assert isinstance(right_view, rrb.TimeSeriesView)
     assert left_view.name == "Left Arm Cmd vs State"
     assert right_view.name == "Right Arm Cmd vs State"
+    _assert_live_window_and_full_history(left_view, window_seconds=5.0)
+    _assert_live_window_and_full_history(right_view, window_seconds=5.0)
 
     expected_left = [f"/trajectory/cmd/L_arm_j{i}" for i in range(1, 8)] + [
         f"/trajectory/state/L_arm_j{i}" for i in range(1, 8)
