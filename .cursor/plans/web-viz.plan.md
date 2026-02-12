@@ -5,6 +5,55 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #32
+
+- 🎯 **Goal:** Lock camera tile aspect ratio to 16:9 so feeds don't stretch/squash when the window resizes.
+- 📝 **Description:** Added `aspect-ratio: 16 / 9` to `.camera-tile` (replacing the old `min-height: 100px`), and changed `.camera-grid` from `height: 100%` to `align-content: start` so grid rows respect the tile's intrinsic aspect ratio instead of stretching to fill the container.
+- 🧪 **Test:** `cd client && npx tsc --noEmit` — N/A (CSS-only change; visual verification required).
+- 🔄 **Integration / Regression:** `make test-client` — pass / pending verification.
+
+## 🐛 Bug Fix #31
+
+- 🎯 **Goal:** Force latest-frame-only camera viewing (no buffering) for Foxglove H.264 stream.
+- 📝 **Description:** Updated `scripts/run_foxglove_demo.py` to publish only the freshest encoded frame by draining the output queue each loop (`tryGet()` until empty, keep newest packet), kept queue depth at `maxSize=1`, and tuned encoder for zero-reordering (`H264_BASELINE`, `setNumBFrames(0)`, `setKeyframeFrequency(1)`, `setNumFramesPool(2)`, CBR 4000 kbps). Updated startup diagnostics and `docs/infra_foxglove.md` to document latest-only semantics.
+- 🧪 **Test:** `uv run --project server python -c "import signal,subprocess,sys,time;p=subprocess.Popen([sys.executable,'scripts/run_foxglove_demo.py','--camera','--port','8772'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True);time.sleep(5);p.send_signal(signal.SIGINT);out,_=p.communicate(timeout=10);print(out);print(p.returncode)"` — pass (no OAK detected in current environment; script gracefully falls back to sine/cosine-only and exits cleanly).
+- 🔄 **Integration / Regression:** `uv run --project server python -m py_compile scripts/run_foxglove_demo.py` — pass (no compile errors).
+
+## 🐛 Bug Fix #30
+
+- 🎯 **Goal:** Reduce end-to-end camera latency after switching Foxglove stream transport to H.264.
+- 📝 **Description:** Tuned `scripts/run_foxglove_demo.py` for low-latency H.264 by switching to `H264_BASELINE`, disabling B-frames (`setNumBFrames(0)`), shortening GOP to 5 frames (`setKeyframeFrequency(5)`), forcing CBR at 4000 kbps, and reducing the encoder output queue depth to `maxSize=1` so stale frames are dropped instead of buffered. Added startup logging that prints active latency-tuning settings and updated `docs/infra_foxglove.md` to document the revised encoder profile and queue behavior.
+- 🧪 **Test:** `uv run --project server python -c "import signal,subprocess,sys,time;p=subprocess.Popen([sys.executable,'scripts/run_foxglove_demo.py','--camera','--port','8771'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True);time.sleep(12);p.send_signal(signal.SIGINT);out,_=p.communicate(timeout=10);print(out);print(p.returncode)"` — pass (connected OAK stream starts on `/camera/color` and logs `H.264 low-latency config: baseline, bframes=0, gop=5, cbr=4000kbps, queue=1.`).
+- 🔄 **Integration / Regression:** `uv run --project server python -m py_compile scripts/run_foxglove_demo.py` — pass (no compile errors).
+
+## ✨ Feature #29
+
+- 🎯 **Goal:** Switch Foxglove camera stream from MJPEG to on-device H.264 for smaller payloads and lower bandwidth.
+- 📝 **Description:** Replaced the `VideoEncoder` MJPEG profile with `H264_MAIN` (IDR keyframe every 15 frames), switched the Foxglove schema from `ros.sensor_msgs.CompressedImage` to Foxglove's native `foxglove.CompressedVideo` with `format: "h264"`, and updated the message shape to match the `CompressedVideo` spec (top-level `timestamp` instead of nested `header.stamp`). H.264 inter-frame compression makes delta frames dramatically smaller than per-frame JPEG. Updated `docs/infra_foxglove.md` with revised diagrams, schema tables, and pipeline details.
+- 🧪 **Test:** Smoke test with connected OAK device — pass (`Streaming OAK socket CAM_A on /camera/color`, clean SIGINT exit).
+- 🔄 **Integration / Regression:** `uv run --project server python -m py_compile scripts/run_foxglove_demo.py` — pass (no compile errors).
+
+## ✨ Feature #28
+
+- 🎯 **Goal:** Move JPEG encoding from the host CPU to the OAK device hardware encoder.
+- 📝 **Description:** Replaced the host-side NV12 decode + `cv2.imencode` JPEG encode path with an on-device `VideoEncoder` node using `Profile.MJPEG` (quality 80). The host now receives pre-encoded JPEG bytes over USB and only performs `base64` + JSON wrapping. Removed the `opencv-python` dependency from the camera code path. Updated `docs/infra_foxglove.md` with revised data-flow diagram and pipeline details.
+- 🧪 **Test:** `uv run --project server python -c "import signal,subprocess,sys,time;p=subprocess.Popen([sys.executable,'scripts/run_foxglove_demo.py','--camera','--port','8769']);time.sleep(2);p.send_signal(signal.SIGINT);p.wait(timeout=8)"` — pass (graceful fallback, clean exit).
+- 🔄 **Integration / Regression:** `uv run --project server python -m py_compile scripts/run_foxglove_demo.py` — pass (no compile errors).
+
+## ✨ Feature #27
+
+- 🎯 **Goal:** Add an optional Foxglove camera window that streams from a connected OAK camera.
+- 📝 **Description:** Extended `scripts/run_foxglove_demo.py` with `--camera` and `--port` flags, added `/camera/color` publishing using a JSON `ros.sensor_msgs.CompressedImage` schema (JPEG + base64), and made camera mode gracefully fall back to sine/cosine-only streaming when no OAK device is detected. Added `scripts/foxglove-camera-layout.json` with a row split between an Image panel (`/camera/color`) and the existing sine/cosine Plot panel.
+- 🧪 **Test:** `uv run --project server python -c "import signal,subprocess,sys,time;p=subprocess.Popen([sys.executable,'scripts/run_foxglove_demo.py','--camera','--port','8767']);time.sleep(2);p.send_signal(signal.SIGINT);p.wait(timeout=8)"` — pass (camera mode starts, reports no-hardware fallback clearly, and exits cleanly on SIGINT).
+- 🔄 **Integration / Regression:** `uv run --project server python -m py_compile scripts/run_foxglove_demo.py && uv run --project server python -c "import json;from pathlib import Path;json.loads(Path('scripts/foxglove-camera-layout.json').read_text());print('layout-json-ok')"` — pass (`layout-json-ok` and no compile errors).
+
+## ✨ Feature #26
+
+- 🎯 **Goal:** Add a minimal Foxglove Studio example that streams a live sine-wave plot.
+- 📝 **Description:** Created `scripts/run_foxglove_demo.py` using the `foxglove-sdk` package. The script starts a Foxglove WebSocket server on `ws://localhost:8765` and streams `/sine` and `/cosine` channels at ~30 Hz with JSON-encoded plot data. Added `foxglove-sdk` to `server/pyproject.toml` dependencies.
+- 🧪 **Test:** `uv run --project server python scripts/run_foxglove_demo.py` — pass (server starts, streams data, connect via Foxglove app).
+- 🔄 **Integration / Regression:** `uv run --project server python -c "import foxglove; from foxglove import Channel, Schema; print('OK')"` — pass.
+
 ## ✨ Feature #25
 
 - 🎯 **Goal:** Make Thor/host runtime usage explicit and copy-paste friendly in the README.
@@ -29,7 +78,7 @@ isProject: false
 ## ✨ Feature #22 | 🐛 Bug Fix #22
 
 - 🎯 **Goal:** Land the SDK refactor milestones (split runners + compatibility shims) without regressing startup guards or test stability.
-- 📝 **Description:** Implemented `telemetry_console` module set (`zmq_channels`, `viewer`, `camera`, `env`, `recorder`, `replay`, `gui_api`, `cli`, `schemas`), added `tc-*` entry points in `server/pyproject.toml`, switched legacy modules (`main.py`, `webrtc.py`, `schemas.py`, `robot_env.py`) to compatibility shims, expanded server coverage for new modules, and updated dev orchestration (`scripts/dev.sh`, `Makefile`) to run split services while preserving pre-cleanup and camera guard checks. Also fixed split-runner startup reliability issues (Rerun port contention and stale runner cleanup for ZMQ ports/processes).
+- 📝 **Description:** Implemented `telemetry_console` module set (`zmq_channels`, `viewer`, `camera`, `env`, `recorder`, `replay`, `gui_api`, `cli`, `schemas`), added `tc-`* entry points in `server/pyproject.toml`, switched legacy modules (`main.py`, `webrtc.py`, `schemas.py`, `robot_env.py`) to compatibility shims, expanded server coverage for new modules, and updated dev orchestration (`scripts/dev.sh`, `Makefile`) to run split services while preserving pre-cleanup and camera guard checks. Also fixed split-runner startup reliability issues (Rerun port contention and stale runner cleanup for ZMQ ports/processes).
 - 🧪 **Test:** `make test` — pass (client: 5/5 vitest, server: 40/40 pytest).
 - 🔄 **Integration / Regression:** `make dev` — pass (`camera-guard:webrtc` relay paths 3/3 ready, `camera-guard:gui` live tiles 3/3, snapshot updated).
 
