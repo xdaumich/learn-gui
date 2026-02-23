@@ -105,6 +105,7 @@ opens one WHEP connection per camera to `http://192.168.50.20:8889/<name>/whep`.
 | `MEDIAMTX_RTSP_PORT`    | 8554          | RTSP ingest port                     |
 | `MEDIAMTX_WHEP_PORT`    | 8889          | WHEP (WebRTC) egress port            |
 | `MEDIAMTX_API_PORT`     | 9997          | MediaMTX status API                  |
+| `WEBRTC_ADDITIONAL_HOSTS` | auto-detect non-loopback IPv4s | Comma-separated ICE host candidates advertised by MediaMTX |
 | `CAMERA_WIDTH`           | 640           | Encode width                         |
 | `CAMERA_HEIGHT`          | 480           | Encode height                        |
 | `CAMERA_FPS`             | 30            | Encode framerate                     |
@@ -198,8 +199,9 @@ The three OAK devices share a USB 2.0 hub chain. USB 2.0 bandwidth
 
 1. Confirm MediaMTX is running: `curl http://<THOR_IP>:9997/v3/paths/list`
 2. Confirm streams are published: each path should show `"ready": true`.
-3. Check browser console for ICE failure — may need STUN config (see above).
-4. Test RTSP directly: `ffplay rtsp://<THOR_IP>:8554/cam_a`
+3. On multi-NIC Thor systems, set `WEBRTC_ADDITIONAL_HOSTS` to the host-reachable Thor IP(s), then restart `make dev_remote` (example: `WEBRTC_ADDITIONAL_HOSTS=192.168.5.20 make dev_remote`).
+4. Check browser console for ICE failure — may need STUN config (see above).
+5. Test RTSP directly: `ffplay rtsp://<THOR_IP>:8554/cam_a`
 
 ### High latency
 

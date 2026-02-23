@@ -5,6 +5,13 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #35
+
+- 🎯 **Goal:** Unblock host-side WebRTC video when Thor has multiple network interfaces.
+- 📝 **Description:** Updated `scripts/dev_remote.sh` to set `MTX_WEBRTCADDITIONALHOSTS` for MediaMTX using either `WEBRTC_ADDITIONAL_HOSTS` (explicit override) or auto-detected non-loopback IPv4 addresses from `hostname -I`, so ICE candidates include the host-reachable NIC. Added `WEBRTC_ADDITIONAL_HOSTS` to `.env.remote.example` and documented the setting in `docs/thor_streaming.md` troubleshooting/config reference.
+- 🧪 **Test:** `bash -n scripts/dev_remote.sh` — pass (script parses cleanly after env/launch changes).
+- 🔄 **Integration / Regression:** `curl -sSI "http://192.168.5.20:8889/cam_a/whep" | sed -n '1p'` — pass (`HTTP/1.1 405 Method Not Allowed`, confirms remote WHEP endpoint remains reachable).
+
 ## ✨ Feature #34
 
 - 🎯 **Goal:** Document the full 3-camera WebRTC streaming workflow from Jetson Thor to a host browser.

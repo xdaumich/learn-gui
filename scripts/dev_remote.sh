@@ -15,6 +15,7 @@ CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
 CAMERA_FPS="${CAMERA_FPS:-30}"
 CAMERA_STARTUP_TIMEOUT="${CAMERA_STARTUP_TIMEOUT:-20.0}"
 CAMERA_RETRY_INTERVAL="${CAMERA_RETRY_INTERVAL:-0.5}"
+WEBRTC_ADDITIONAL_HOSTS="${WEBRTC_ADDITIONAL_HOSTS:-}"
 DEV_SKIP_PRE_CLEANUP="${DEV_SKIP_PRE_CLEANUP:-0}"
 MEDIAMTX_BIN="${MEDIAMTX_BIN:-$(command -v mediamtx || true)}"
 
@@ -22,6 +23,15 @@ if [[ -z "${MEDIAMTX_BIN}" ]]; then
   echo "ERROR: mediamtx binary not found on PATH." >&2
   echo "Install MediaMTX on Thor, then retry." >&2
   exit 1
+fi
+
+if [[ -z "${WEBRTC_ADDITIONAL_HOSTS}" ]]; then
+  WEBRTC_ADDITIONAL_HOSTS="$(
+    hostname -I 2>/dev/null \
+      | tr ' ' '\n' \
+      | sed -E '/^$/d;/^127\./d;/^169\.254\./d' \
+      | paste -sd, -
+  )"
 fi
 
 list_listening_pids() {
@@ -157,10 +167,18 @@ trap cleanup EXIT SIGINT SIGTERM
 
 if [[ -f "${MEDIAMTX_CONFIG_PATH}" ]]; then
   echo "==> Starting MediaMTX with ${MEDIAMTX_CONFIG_PATH}..."
-  "${MEDIAMTX_BIN}" "${MEDIAMTX_CONFIG_PATH}" &
+  if [[ -n "${WEBRTC_ADDITIONAL_HOSTS}" ]]; then
+    echo "==> MediaMTX WebRTC additional hosts: ${WEBRTC_ADDITIONAL_HOSTS}"
+  fi
+  MTX_WEBRTCADDITIONALHOSTS="${WEBRTC_ADDITIONAL_HOSTS}" \
+    "${MEDIAMTX_BIN}" "${MEDIAMTX_CONFIG_PATH}" &
 else
   echo "==> MediaMTX config not found at ${MEDIAMTX_CONFIG_PATH}; starting defaults."
-  "${MEDIAMTX_BIN}" &
+  if [[ -n "${WEBRTC_ADDITIONAL_HOSTS}" ]]; then
+    echo "==> MediaMTX WebRTC additional hosts: ${WEBRTC_ADDITIONAL_HOSTS}"
+  fi
+  MTX_WEBRTCADDITIONALHOSTS="${WEBRTC_ADDITIONAL_HOSTS}" \
+    "${MEDIAMTX_BIN}" &
 fi
 PIDS+=("$!")
 
