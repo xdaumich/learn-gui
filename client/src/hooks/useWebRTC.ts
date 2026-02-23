@@ -183,22 +183,39 @@ export function useWebRTC() {
     }
 
     async function fetchCameraNames(): Promise<string[] | null> {
-      try {
-        const response = await fetch(CAMERAS_URL, { signal: controller.signal });
-        const cameras = await response.json();
-        if (!isActive()) {
-          return null;
+      const deadline = Date.now() + Math.max(WHEP_CONNECT_TIMEOUT_MS, 30000);
+      while (isActive()) {
+        try {
+          const response = await fetch(CAMERAS_URL, { signal: controller.signal });
+          const cameras = await response.json();
+          if (!isActive()) {
+            return null;
+          }
+          if (!Array.isArray(cameras)) {
+            if (Date.now() >= deadline) {
+              return [];
+            }
+            await delay(WHEP_CONNECT_RETRY_MS);
+            continue;
+          }
+          const cameraNames = cameras.filter(
+            (camera): camera is string => typeof camera === "string",
+          );
+          if (cameraNames.length > 0 || Date.now() >= deadline) {
+            return cameraNames;
+          }
+          await delay(WHEP_CONNECT_RETRY_MS);
+        } catch {
+          if (!isActive()) {
+            return null;
+          }
+          if (Date.now() >= deadline) {
+            return [];
+          }
+          await delay(WHEP_CONNECT_RETRY_MS);
         }
-        if (!Array.isArray(cameras)) {
-          return [];
-        }
-        return cameras.filter((camera): camera is string => typeof camera === "string");
-      } catch {
-        if (!isActive()) {
-          return null;
-        }
-        return [];
       }
+      return null;
     }
 
     async function connectCamera(cameraName: string): Promise<void> {

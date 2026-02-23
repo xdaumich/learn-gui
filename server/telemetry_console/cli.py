@@ -20,6 +20,11 @@ def run_gui() -> None:
     parser = argparse.ArgumentParser(description="Start the GUI viewer process.")
     parser.add_argument("--port", type=int, default=8000, help="API server port")
     parser.add_argument("--no-client", action="store_true", help="Skip Vite dev server")
+    parser.add_argument(
+        "--no-rerun",
+        action="store_true",
+        help="Skip starting embedded Rerun services (video-only debug mode).",
+    )
     args = parser.parse_args()
 
     if not args.no_client:
@@ -29,7 +34,8 @@ def run_gui() -> None:
 
     from telemetry_console import viewer
 
-    viewer.start()
+    if not args.no_rerun:
+        viewer.start()
 
     import uvicorn
 
@@ -48,10 +54,13 @@ def run_camera() -> None:
 
     from telemetry_console.camera import ensure_streaming, list_camera_sockets
 
-    deadline = time.time() + max(0.1, float(args.startup_timeout))
+    startup_timeout = float(args.startup_timeout)
+    deadline: float | None = None
+    if startup_timeout > 0:
+        deadline = time.time() + max(0.1, startup_timeout)
     last_error: Exception | None = None
     active_sockets = []
-    while time.time() < deadline:
+    while deadline is None or time.time() < deadline:
         try:
             sockets = list_camera_sockets()
         except Exception as exc:  # pragma: no cover - hardware/runtime dependent
@@ -71,16 +80,43 @@ def run_camera() -> None:
             )
             if active_sockets:
                 break
-        except ValueError as exc:
+        except Exception as exc:  # pragma: no cover - hardware/runtime dependent
+            # DepthAI can intermittently throw RuntimeError/ValueError while USB
+            # devices are booting. Keep retrying until startup timeout.
             last_error = exc
         time.sleep(max(0.05, float(args.retry_interval)))
 
     if not active_sockets:
+        if deadline is None:
+            print("[tc-camera] Waiting for cameras (startup timeout disabled).")
+            try:
+                while True:
+                    try:
+                        sockets = list_camera_sockets()
+                        if sockets:
+                            active_sockets = ensure_streaming(
+                                camera_sockets=sockets,
+                                width=args.width,
+                                height=args.height,
+                                fps=args.fps,
+                            )
+                            if active_sockets:
+                                break
+                    except Exception as exc:  # pragma: no cover - hardware/runtime dependent
+                        last_error = exc
+                    time.sleep(max(0.05, float(args.retry_interval)))
+            except KeyboardInterrupt:
+                from telemetry_console.camera import stop_streaming
+
+                stop_streaming()
+                return
+
         if last_error is None:
             print("[tc-camera] No cameras found before startup timeout.")
         else:
             print(f"[tc-camera] Failed to start relay: {last_error}")
-        sys.exit(1)
+        if not active_sockets:
+            sys.exit(1)
 
     print(f"[tc-camera] Streaming {len(active_sockets)} camera(s). Press Ctrl+C to stop.")
     try:

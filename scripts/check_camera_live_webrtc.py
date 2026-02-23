@@ -88,6 +88,28 @@ def _load_camera_names(cameras_url: str) -> list[str]:
     return names
 
 
+def _wait_for_camera_names(
+    cameras_url: str,
+    *,
+    timeout_s: float,
+    poll_s: float,
+) -> list[str]:
+    deadline = time.monotonic() + timeout_s
+    last_error: Exception | None = None
+
+    while time.monotonic() < deadline:
+        try:
+            return _load_camera_names(cameras_url)
+        except Exception as exc:
+            last_error = exc
+        time.sleep(poll_s)
+
+    details = f"last_error={last_error}" if last_error else "no camera payload"
+    raise RuntimeError(
+        f"Camera discovery timed out after {timeout_s:.1f}s (`/webrtc/cameras`, {details})."
+    )
+
+
 def _normalize_stream_name(camera_name: str) -> str:
     return camera_name.lower()
 
@@ -179,7 +201,7 @@ def main() -> int:
     mediamtx_api_url = _normalize_base_url(
         _env_str("CAMERA_GUARD_MEDIAMTX_API_URL", "http://127.0.0.1:9997")
     )
-    timeout_s = _env_float("CAMERA_GUARD_TIMEOUT_S", 20.0)
+    timeout_s = _env_float("CAMERA_GUARD_TIMEOUT_S", 45.0)
     poll_s = _env_float("CAMERA_GUARD_POLL_S", 0.5)
     require_robot = _env_bool("CAMERA_GUARD_REQUIRE_ROBOT", True)
 
@@ -190,7 +212,11 @@ def main() -> int:
 
     try:
         _wait_for_health(health_url, timeout_s=timeout_s, poll_s=poll_s)
-        camera_names = _load_camera_names(cameras_url)
+        camera_names = _wait_for_camera_names(
+            cameras_url,
+            timeout_s=timeout_s,
+            poll_s=poll_s,
+        )
         print(
             f"[camera-guard:webrtc] Expected cameras: {len(camera_names)} "
             f"({', '.join(camera_names)}).",

@@ -16,10 +16,16 @@ RECORDER_STATUS_PORT="${RECORDER_STATUS_PORT:-5556}"
 RECORDER_CONTROL_PORT="${RECORDER_CONTROL_PORT:-5557}"
 ROBOT_HEARTBEAT_PATH="${ROBOT_HEARTBEAT_PATH:-data_logs/.robot_heartbeat.json}"
 MEDIAMTX_CONFIG_PATH="${MEDIAMTX_CONFIG_PATH:-mediamtx.yml}"
+CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
+CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
+CAMERA_FPS="${CAMERA_FPS:-30}"
+CAMERA_STARTUP_TIMEOUT="${CAMERA_STARTUP_TIMEOUT:-0}"
+CAMERA_RETRY_INTERVAL="${CAMERA_RETRY_INTERVAL:-1.0}"
 GUI_URL="${CAMERA_GUARD_GUI_URL:-http://localhost:${VITE_PORT}}"
 GUI_GUARD_BROWSER="${CAMERA_GUARD_GUI_BROWSER:-chromium}"
 DEV_SKIP_PRE_CLEANUP="${DEV_SKIP_PRE_CLEANUP:-0}"
 MEDIAMTX_BIN="$(command -v mediamtx || true)"
+GUI_NO_RERUN="${GUI_NO_RERUN:-0}"
 
 list_listening_pids() {
   local port="$1"
@@ -162,8 +168,10 @@ fi
 
 require_free_port "${VITE_PORT}" "Vite"
 require_free_port "${API_PORT}" "FastAPI"
-require_free_port "${RERUN_GRPC_PORT}" "Rerun gRPC"
-require_free_port "${RERUN_WEB_PORT}" "Rerun web"
+if [[ "${GUI_NO_RERUN}" != "1" ]]; then
+  require_free_port "${RERUN_GRPC_PORT}" "Rerun gRPC"
+  require_free_port "${RERUN_WEB_PORT}" "Rerun web"
+fi
 require_free_port "${ROBOT_STATE_PORT}" "Robot state ZMQ"
 require_free_port "${RECORDER_STATUS_PORT}" "Recorder status ZMQ"
 require_free_port "${RECORDER_CONTROL_PORT}" "Recorder control ZMQ"
@@ -185,7 +193,12 @@ echo "==> Starting client (Vite)..."
 PIDS+=("$!")
 
 echo "==> Starting GUI API + Rerun viewer..."
-uv run --project server tc-gui --no-client --port "${API_PORT}" &
+GUI_ARGS=(--no-client --port "${API_PORT}")
+if [[ "${GUI_NO_RERUN}" == "1" ]]; then
+  echo "==> GUI_NO_RERUN=1, starting GUI API without Rerun services."
+  GUI_ARGS+=(--no-rerun)
+fi
+uv run --project server tc-gui "${GUI_ARGS[@]}" &
 PIDS+=("$!")
 
 if [[ -n "${MEDIAMTX_BIN}" ]]; then
@@ -203,14 +216,24 @@ else
 fi
 
 echo "==> Starting camera relay runner..."
-uv run --project server tc-camera &
+uv run --project server tc-camera \
+  --width "${CAMERA_WIDTH}" \
+  --height "${CAMERA_HEIGHT}" \
+  --fps "${CAMERA_FPS}" \
+  --startup-timeout "${CAMERA_STARTUP_TIMEOUT}" \
+  --retry-interval "${CAMERA_RETRY_INTERVAL}" &
 PIDS+=("$!")
 
 echo "==> Starting recorder runner..."
 uv run --project server tc-recorder &
 PIDS+=("$!")
 
-if [[ "${RUN_ROBOT_RUNNER:-1}" == "1" ]]; then
+DEFAULT_RUN_ROBOT_RUNNER="1"
+if [[ "${GUI_NO_RERUN}" == "1" ]]; then
+  DEFAULT_RUN_ROBOT_RUNNER="0"
+fi
+RUN_ROBOT_RUNNER_RESOLVED="${RUN_ROBOT_RUNNER:-${DEFAULT_RUN_ROBOT_RUNNER}}"
+if [[ "${RUN_ROBOT_RUNNER_RESOLVED}" == "1" ]]; then
   echo "==> Starting robot runner..."
   uv run --project server tc-robot \
     --no-open-browser \
@@ -223,15 +246,21 @@ else
 fi
 
 if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
+  CAMERA_GUARD_REQUIRE_ROBOT="${CAMERA_GUARD_REQUIRE_ROBOT:-${RUN_ROBOT_RUNNER_RESOLVED}}"
   echo "==> Running camera live guard (WebRTC)..."
   CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
+    CAMERA_GUARD_REQUIRE_ROBOT="${CAMERA_GUARD_REQUIRE_ROBOT}" \
     uv run --project server python scripts/check_camera_live_webrtc.py
 
   echo "==> Running camera live guard (GUI + snapshot)..."
-  CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
-    CAMERA_GUARD_GUI_URL="${GUI_URL}" \
-    CAMERA_GUARD_GUI_BROWSER="${GUI_GUARD_BROWSER}" \
-    node scripts/check_camera_live_gui.mjs
+  if node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+    CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
+      CAMERA_GUARD_GUI_URL="${GUI_URL}" \
+      CAMERA_GUARD_GUI_BROWSER="${GUI_GUARD_BROWSER}" \
+      node scripts/check_camera_live_gui.mjs
+  else
+    echo "==> Playwright package not found, skipping GUI snapshot guard."
+  fi
 else
   echo "==> SKIP_CAMERA_GUARD=1, skipping camera live guards."
 fi

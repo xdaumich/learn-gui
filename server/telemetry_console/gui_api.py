@@ -7,6 +7,8 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,6 +67,61 @@ def _recording_status_from_state(state) -> RecordingStatus:
     )
 
 
+def _camera_names_from_mediamtx_paths() -> list[str] | None:
+    """Read active camera stream names from MediaMTX path API.
+
+    Returns uppercase socket-like names (e.g. CAM_A) in layout order when possible.
+    """
+    paths_api_url = os.environ.get(
+        "MEDIAMTX_PATHS_API_URL",
+        "http://127.0.0.1:9997/v3/paths/list",
+    )
+    timeout_s = float(os.environ.get("MEDIAMTX_PATHS_API_TIMEOUT_S", "0.8"))
+
+    try:
+        with urllib_request.urlopen(paths_api_url, timeout=max(0.1, timeout_s)) as response:
+            raw = response.read().decode("utf-8")
+        payload = json.loads(raw)
+    except (
+        OSError,
+        ValueError,
+        urllib_error.HTTPError,
+        urllib_error.URLError,
+    ):
+        return None
+
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return None
+
+    # Gather CAM_* names from currently known MediaMTX paths.
+    discovered_camera_names: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        path_name = item.get("name")
+        if not isinstance(path_name, str):
+            continue
+        camera_name = path_name.upper()
+        if not camera_name.startswith("CAM_"):
+            continue
+        discovered_camera_names.append(camera_name)
+
+    if not discovered_camera_names:
+        return []
+
+    # Keep deterministic left/center/right ordering when the enum layout is available.
+    layout_sockets = getattr(webrtc, "CAMERA_LAYOUT_SOCKET_ORDER", ())
+    if layout_sockets:
+        layout_names = [socket.name for socket in layout_sockets]
+        discovered_set = set(discovered_camera_names)
+        ordered = [name for name in layout_names if name in discovered_set]
+        extras = sorted(name for name in discovered_set if name not in set(layout_names))
+        return ordered + extras
+
+    return sorted(set(discovered_camera_names))
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -119,6 +176,12 @@ async def robot_status():
 
 @app.get("/webrtc/cameras")
 async def webrtc_cameras() -> list[str]:
+    # Prefer MediaMTX runtime paths so the GUI only requests streams that are
+    # actually present (important when fewer than CAM_A/CAM_B/CAM_C are plugged in).
+    camera_names = _camera_names_from_mediamtx_paths()
+    if camera_names is not None:
+        return camera_names
+
     camera_sockets = getattr(app.state, "camera_sockets", None)
     if not camera_sockets:
         # In split-runner mode, camera relay runs in tc-camera. Avoid probing the

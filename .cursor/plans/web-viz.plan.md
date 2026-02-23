@@ -5,6 +5,27 @@ todos: []
 isProject: false
 ---
 
+## 🐛 Bug Fix #38
+
+- 🎯 **Goal:** Make local `make dev` video streaming resilient on Thor and support video-only debugging without Rerun.
+- 📝 **Description:** Added `--no-rerun` to `tc-gui` (`server/telemetry_console/cli.py`) and wired `GUI_NO_RERUN=1` support in `scripts/dev.sh` so API/client/MediaMTX/camera can run without starting Rerun services. Hardened camera startup by retrying on all DepthAI startup exceptions in `run_camera()` and allowing infinite retry when startup timeout is `0` (now default in `dev.sh`). Updated `dev.sh` to pass explicit camera startup args and to skip GUI snapshot guard gracefully when `playwright` package is missing instead of terminating the stack.
+- 🧪 **Test:** `GUI_NO_RERUN=1 RUN_ROBOT_RUNNER=0 make dev` — pass (WebRTC guard eventually reports `relay paths ready for 3/3 streams`; stack stays up in video-only mode).
+- 🔄 **Integration / Regression:** `bash -n scripts/dev.sh` — pass (shell syntax valid after mode/guard changes).
+
+## 🐛 Bug Fix #37
+
+- 🎯 **Goal:** Avoid false-negative `make dev` failures when camera streams take time to appear after startup.
+- 📝 **Description:** Updated `scripts/check_camera_live_webrtc.py` to poll `/webrtc/cameras` until timeout instead of failing immediately on the first empty response. Increased default guard timeout from 20s to 45s to better match Jetson + DepthAI camera boot/relay warm-up behavior.
+- 🧪 **Test:** `python scripts/check_camera_live_webrtc.py --help` — N/A (script has no CLI args; verification performed by running `make dev` and observing guard behavior).
+- 🔄 **Integration / Regression:** `make dev` — pass/fail depends on hardware availability; guard now correctly waits for camera discovery instead of immediate exit on transient empty camera list.
+
+## 🐛 Bug Fix #36
+
+- 🎯 **Goal:** Prevent `make dev` from requesting nonexistent camera paths like `cam_b` during startup or single-camera runs.
+- 📝 **Description:** Updated `server/telemetry_console/gui_api.py` so `/webrtc/cameras` prefers live camera names from MediaMTX path API (`/v3/paths/list`) and only falls back to static layout when the API is unreachable. Updated `client/src/hooks/useWebRTC.ts` to retry camera-list discovery for up to 30s (instead of a one-shot fetch), eliminating early startup races where the browser requested streams before relay paths were published.
+- 🧪 **Test:** `curl -sS http://127.0.0.1:9997/v3/paths/list` — pass (relay paths publish and report `ready: true` once `tc-camera` starts).
+- 🔄 **Integration / Regression:** `SKIP_CAMERA_GUARD=1 RUN_ROBOT_RUNNER=0 make dev` — pass (stack starts; repeated `no stream is available on path 'cam_b'` startup error no longer appears after patch).
+
 ## 🐛 Bug Fix #35
 
 - 🎯 **Goal:** Unblock host-side WebRTC video when Thor has multiple network interfaces.
