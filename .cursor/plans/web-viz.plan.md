@@ -5,6 +5,20 @@ todos: []
 isProject: false
 ---
 
+## ✨ Feature #34
+
+- 🎯 **Goal:** Document the full 3-camera WebRTC streaming workflow from Jetson Thor to a host browser.
+- 📝 **Description:** Audited all three connected OAK cameras via `lsusb -d 03e7:` (1× Luxonis Device `f63b`, 2× Movidius MyriadX `2485`), confirmed Thor network interfaces, and wrote `docs/thor_streaming.md` covering: architecture diagram, quick-start steps for Thor (`make dev_remote`) and host (`THOR_IP=… make dev_host`), configuration reference, firewall checklist, troubleshooting (USB bandwidth, WHEP, latency, permissions), smoke-test commands, and a file index of every relevant source file.
+- 🧪 **Test:** `cat docs/thor_streaming.md | head -5` — pass (file exists and contains expected title).
+- 🔄 **Integration / Regression:** `make test-client` — N/A (documentation-only change).
+
+## ✨ Feature #33
+
+- 🎯 **Goal:** Enable and document LAN WebRTC streaming from Jetson Thor using the Luxonis example app.
+- 📝 **Description:** Launched the `external/oak-examples/streaming/webrtc-streaming` app end-to-end on Thor: created a Python venv under `external/oak-examples/streaming/webrtc-streaming`, installed DepthAI/aiortc/aiohttp requirements, installed missing Node tooling (`nodejs` + `npm`), built the frontend bundle, and started `main.py` on port `8080`. Validated server accessibility on Thor and captured the local LAN URL `http://10.112.210.46:8080` for viewing from a same-network machine.
+- 🧪 **Test:** `curl -I http://127.0.0.1:8080/` — pass (`HTTP/1.1 200 OK`; confirms server reachable locally after launch).
+- 🔄 **Integration / Regression:** `ss -ltnp | grep ':8080'` — pass (`python3 main.py` bound to `0.0.0.0:8080` and `[::]:8080`; confirms service is listening on the expected port).
+
 ## 🐛 Bug Fix #32
 
 - 🎯 **Goal:** Lock camera tile aspect ratio to 16:9 so feeds don't stretch/squash when the window resizes.

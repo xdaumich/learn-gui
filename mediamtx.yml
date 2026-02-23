@@ -1,5 +1,7 @@
 rtsp: yes
 rtspAddress: :8554
+rtpAddress: :8002
+rtcpAddress: :8003
 
 webrtc: yes
 webrtcAddress: :8889

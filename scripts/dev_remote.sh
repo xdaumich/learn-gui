@@ -79,6 +79,10 @@ kill_port_if_in_use() {
 cleanup_preexisting_ports() {
   local cleaned_any=0
   pkill -f 'tc-camera|mediamtx' >/dev/null 2>&1 || true
+  # mediamtx may have been started as root; escalate if needed
+  if pgrep -f mediamtx >/dev/null 2>&1; then
+    sudo pkill -f mediamtx >/dev/null 2>&1 || true
+  fi
 
   for entry in \
     "${MEDIAMTX_RTSP_PORT}:MediaMTX RTSP" \
