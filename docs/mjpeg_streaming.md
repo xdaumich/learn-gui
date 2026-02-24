@@ -12,6 +12,50 @@ the camera or the delivery layer.
 MJPEG over HTTP eliminates all of that. If MJPEG works but WebRTC doesn't, the
 cameras are fine and the problem is in the relay/signaling stack.
 
+## Two-machine workflow
+
+| Machine | Role | What runs |
+|---------|------|-----------|
+| **Jetson Thor** | Streams cameras | `make mjpeg` (FastAPI + DepthAI on `:8001`) |
+| **Mac host** | Views + saves | Browser at `http://$THOR_IP:8001/`, curl/ffmpeg for saving |
+
+```
+Thor (OAK cameras)                         Mac host
+┌────────────────────────┐                ┌──────────────────────────┐
+│  scripts/mjpeg_debug.py │               │                          │
+│                         │  HTTP :8001   │  Browser → view streams  │
+│  OAK-D → MJPEG encoder │ ───────────── │  curl    → save snapshot │
+│  → FastAPI server       │               │  ffmpeg  → record MP4    │
+└────────────────────────┘                └──────────────────────────┘
+```
+
+No SSH tunnel needed — plain HTTP works over any network path (LAN, Tailscale, etc.).
+
+### Thor network binding
+
+The server must bind to an interface reachable by the Mac host (typically WiFi).
+Set `THOR_IP` in your `.env.host` (or `.env.remote`) to the WiFi address:
+
+```bash
+# .env.remote (Thor side)
+MJPEG_HOST=0.0.0.0       # bind all interfaces (default, works out of the box)
+MJPEG_PORT=8001
+
+# .env.host (Mac side)
+THOR_IP=10.112.210.46     # Thor's WiFi IP (wlP1p1s0)
+```
+
+Find Thor's WiFi IP:
+```bash
+ip -4 addr show wlP1p1s0 | grep -oP 'inet \K[0-9.]+'
+```
+
+Verify from the Mac host:
+```bash
+curl http://$THOR_IP:8001/cameras
+# Expected: ["left","center","right"]
+```
+
 ## Design
 
 ### What
@@ -19,6 +63,15 @@ cameras are fine and the problem is in the relay/signaling stack.
 `scripts/mjpeg_debug.py` — a self-contained FastAPI server that streams MJPEG from
 connected OAK cameras over plain HTTP. No dependency on tc-camera, MediaMTX, tc-gui,
 or any other service.
+
+### Minimal dependencies
+
+Only two Python packages beyond stdlib:
+
+| Package | Purpose |
+|---------|---------|
+| `depthai` | OAK camera access + on-device MJPEG encoding |
+| `fastapi` + `uvicorn` | HTTP server |
 
 ### Endpoints
 
@@ -59,55 +112,88 @@ Reuses the same ordering logic as `camera.py`:
 | `CAMERA_HEIGHT` | `480` | Frame height |
 | `CAMERA_FPS` | `30` | Target framerate |
 
-### Run
+## Start streaming (Thor)
 
 ```bash
-# Standalone
-uv run --project server python scripts/mjpeg_debug.py
-
 # Via Makefile
 make mjpeg
+
+# Or directly
+uv run --project server python scripts/mjpeg_debug.py
 ```
 
-Then open `http://<host>:8001/` in any browser. Each camera renders as an `<img>` tag —
+Devices are opened on server startup (not lazy — immediate feedback if a camera
+fails to initialize). Streams run until Ctrl+C. Graceful shutdown closes all
+DepthAI devices.
+
+## View in browser (host)
+
+Open `http://$THOR_IP:8001/` in any browser. Each camera renders as an `<img>` tag —
 no JavaScript required.
 
-### Lifecycle
+Individual streams are at `http://$THOR_IP:8001/stream/{camera}` where camera is
+`left`, `center`, or `right`.
 
-- Devices are opened on server startup (not lazy — this is a debug tool, we want
-  immediate feedback if a camera fails to initialize).
-- Streams run until the server is killed (Ctrl+C).
-- Graceful shutdown closes all DepthAI devices.
+Check available cameras: `curl http://$THOR_IP:8001/cameras`
 
-## Scope
+## Save image/video (host)
 
-### In scope
+All saving happens on the host machine. `scripts/save_mjpeg.py` connects to Thor's
+MJPEG server over HTTP and saves JPEG snapshots or MP4 video using OpenCV.
 
-- `scripts/mjpeg_debug.py` — standalone server (~100-150 lines)
-- `make mjpeg` — Makefile target
-- Basic error handling: camera not found, device open failure
+### Prerequisites (Mac host)
 
-### Out of scope (future)
+```bash
+pip install opencv-python    # or: pip install opencv-python-headless
+```
 
-- Integration into gui_api as `/mjpeg/{camera}` endpoint
-- React UI toggle between WebRTC and MJPEG
-- Recording from MJPEG streams
-- Audio
+### Python script: `scripts/save_mjpeg.py`
+
+```bash
+# Snapshot all cameras (saves to ./captures/<camera>_<timestamp>.jpg)
+python scripts/save_mjpeg.py --host $THOR_IP snapshot
+
+# Snapshot one camera
+python scripts/save_mjpeg.py --host $THOR_IP --camera center snapshot
+
+# Record 10s MP4 from all cameras (saves to ./captures/<camera>_<timestamp>.mp4)
+python scripts/save_mjpeg.py --host $THOR_IP record --duration 10
+
+# Record center only, custom output dir
+python scripts/save_mjpeg.py --host $THOR_IP --camera center --out ./my_clips record --duration 30
+```
+
+The script auto-discovers cameras via `GET /cameras`, reads the MJPEG stream with
+`cv2.VideoCapture`, and writes MP4 with `cv2.VideoWriter`. No ffmpeg binary needed.
+
+### Quick reference
+
+| Task | Command |
+|------|---------|
+| List cameras | `curl http://$THOR_IP:8001/cameras` |
+| Snapshot all | `python scripts/save_mjpeg.py --host $THOR_IP snapshot` |
+| Snapshot one | `python scripts/save_mjpeg.py --host $THOR_IP --camera center snapshot` |
+| Record 10s all | `python scripts/save_mjpeg.py --host $THOR_IP record --duration 10` |
+| Record one | `python scripts/save_mjpeg.py --host $THOR_IP --camera center record --duration 10` |
 
 ## Tradeoffs vs WebRTC
 
 | | MJPEG (this) | WebRTC (current) |
 |---|---|---|
-| Complexity | ~100 lines, no deps | MediaMTX + WHEP + ICE + SDP |
+| Complexity | ~300 lines, 2 deps | MediaMTX + WHEP + ICE + SDP |
 | Latency | ~100-200ms | ~50-100ms |
 | Bandwidth | Higher (no inter-frame) | Lower (H.264) |
 | NAT/firewall | Just HTTP | Needs ICE/STUN/UDP |
+| Save to disk | curl/ffmpeg against HTTP | Requires browser MediaRecorder or server-side |
 | Debug value | High — isolates camera from delivery | N/A |
 | USB 2.0 hub (3 cam) | May need to lower FPS to ~15 | Same constraint |
 
-## Implementation steps
+## Troubleshooting
 
-1. Create `scripts/mjpeg_debug.py` with device discovery, MJPEG streaming, and index page.
-2. Add `make mjpeg` target to Makefile.
-3. Test with cameras attached: verify `/cameras` returns names, `/stream/{camera}` renders in browser, `/` shows all three feeds.
-4. Add a basic pytest for the `/cameras` endpoint (mock DepthAI devices).
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "No cameras found" on `/` | No OAK devices detected | Check USB connections, run `lsusb` on Thor |
+| Port 8001 already in use | Previous instance still running | Script auto-kills stale process; or `fuser -k 8001/tcp` |
+| ffmpeg hangs on connect | Thor firewall blocking port | Check `ufw status` on Thor, allow 8001 |
+| Choppy stream (3 cameras) | USB 2.0 bandwidth limit | Lower FPS: `CAMERA_FPS=15 make mjpeg` |
+| Black frames | Camera needs warmup | Wait 1-2 seconds after startup |

@@ -3,17 +3,20 @@
 Requires: pip install opencv-python
 
 Usage:
+    # Set Thor IP once (or pass --host each time)
+    export THOR_IP=10.112.210.46
+
     # Snapshot all cameras
-    python scripts/save_mjpeg.py --host 10.221.7.136 snapshot
+    python scripts/save_mjpeg.py --host $THOR_IP snapshot
 
     # Snapshot one camera
-    python scripts/save_mjpeg.py --host 10.221.7.136 snapshot --camera center
+    python scripts/save_mjpeg.py --host $THOR_IP snapshot --camera center
 
     # Record 10s video from all cameras
-    python scripts/save_mjpeg.py --host 10.221.7.136 record --duration 10
+    python scripts/save_mjpeg.py --host $THOR_IP record --duration 10
 
     # Record center only, custom output dir
-    python scripts/save_mjpeg.py --host 10.221.7.136 record --camera center --out ./captures
+    python scripts/save_mjpeg.py --host $THOR_IP record --camera center --out ./captures
 """
 
 from __future__ import annotations
@@ -103,7 +106,8 @@ def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fp
 
 def main():
     parser = argparse.ArgumentParser(description="Save MJPEG snapshots or video clips")
-    parser.add_argument("--host", default="127.0.0.1", help="MJPEG server host (default: 127.0.0.1)")
+    parser.add_argument("--host", default=os.environ.get("THOR_IP", "127.0.0.1"),
+                        help="MJPEG server host (default: $THOR_IP or 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8001, help="MJPEG server port (default: 8001)")
     parser.add_argument("--out", type=Path, default=Path("captures"), help="Output directory (default: ./captures)")
     parser.add_argument("--camera", help="Single camera name (default: all)")

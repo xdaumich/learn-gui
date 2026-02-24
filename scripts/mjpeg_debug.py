@@ -284,6 +284,26 @@ async def index():
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _cleanup_previous():
+    """Kill any previous process holding our port and wait for USB device recycle."""
+    import subprocess
+    import time
+
+    # fuser -k sends SIGKILL to all processes using the port (exit 0 = found & killed)
+    try:
+        result = subprocess.run(
+            ["fuser", "-k", "-KILL", f"{PORT}/tcp"],
+            capture_output=True, text=True,
+        )
+        killed = result.returncode == 0
+    except FileNotFoundError:
+        killed = False
+
+    if killed:
+        logger.info("Killed previous process on port %d, waiting for USB devices to recycle...", PORT)
+        time.sleep(5)
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -291,6 +311,8 @@ if __name__ == "__main__":
 
     # Graceful shutdown on Ctrl+C
     signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+
+    _cleanup_previous()
 
     logger.info("Starting MJPEG debug server on %s:%d", HOST, PORT)
     logger.info("Resolution: %dx%d @ %d FPS", WIDTH, HEIGHT, FPS)
