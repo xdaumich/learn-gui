@@ -30,9 +30,10 @@ If Mac and Thor are on different subnets, use Tailscale or WireGuard for a route
 ### Setup
 
 ```bash
-make setup           # install all deps (npm + uv + submodules)
+make setup           # install all deps (npm + uv)
 make setup_host      # host-only: client + server deps
 make setup_remote    # Thor-only: server + mediamtx check
+make external        # clone external reference repos (git submodules)
 ```
 
 ### Development

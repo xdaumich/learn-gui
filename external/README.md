@@ -1,15 +1,14 @@
-# External dependencies
+# External references
 
-These are tracked as git submodules:
+Code-reference-only repos tracked as git submodules. **Not used at runtime.**
 
 - depthai-core: https://github.com/luxonis/depthai-core.git
 - rerun: https://github.com/rerun-io/rerun.git
 - dexmate-urdf: https://github.com/dexmate-ai/dexmate-urdf.git
+- oak-examples: https://github.com/luxonis/oak-examples.git
 
-If you need to re-clone them manually:
+Clone with:
 
 ```bash
-git clone https://github.com/luxonis/depthai-core.git external_dependencies/depthai-core
-git clone https://github.com/rerun-io/rerun.git external_dependencies/rerun
-git clone https://github.com/dexmate-ai/dexmate-urdf.git external_dependencies/dexmate-urdf
+make external
 ```

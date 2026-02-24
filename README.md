@@ -10,16 +10,17 @@ server/
   telemetry_console/       Split SDK/runtime modules (viewer, camera, env, recorder, replay, GUI API, CLI)
   main.py                  Backward-compat API entry point (delegates to telemetry_console.gui_api)
 tests/                     All tests (client + server)
-external/                  Git submodules (depthai-core, rerun, dexmate-urdf)
+external/                  Reference repos (git submodules, not used at runtime)
 scripts/                   Dev scripts (setup, dev, lint)
 ```
 
 ## Quick start
 
 ```bash
-make setup       # install all deps (npm + uv + submodules)
+make setup       # install all deps (npm + uv)
 make dev         # clean stale ports, start split runners, run camera guards
 make test        # run all tests
+make external    # clone external reference repos (git submodules, optional)
 ```
 
 ## Usage (Thor camera + host UI)
@@ -208,10 +209,13 @@ Camera relay defaults to device-side `H264` for broad browser compatibility
 (Chrome, Firefox, Safari). The host stays relay-only for streaming and only
 decodes on the recording path when recording is active.
 
-## External dependencies
+## External references
 
-Tracked as git submodules under `external/`:
+Code-reference-only submodules under `external/` (not used at runtime):
 
 - **depthai-core** -- Luxonis DepthAI camera SDK
 - **rerun** -- Rerun visualization (web viewer + SDK)
 - **dexmate-urdf** -- Robot URDF models
+- **oak-examples** -- Luxonis OAK example code
+
+Clone them with `make external` if you need to browse the source.

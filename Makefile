@@ -1,5 +1,5 @@
 .PHONY: \
-	setup setup_host setup_remote \
+	setup setup_host setup_remote external \
 	install_tools install_uv install_mediamtx \
 	dev dev-cleanup dev-guard dev_host dev_remote dev_remote_cleanup dev_remove \
 	robot client server mediamtx gui camera recorder replay mjpeg \
@@ -17,12 +17,15 @@ setup: install_tools
 	@bash scripts/setup.sh
 
 setup_host: install_tools
-	@git submodule update --init --recursive
 	@cd client && npm install
 	@cd server && uv sync
 
 setup_remote: install_tools
 	@bash scripts/setup_remote.sh
+
+external:
+	@echo "==> Cloning external reference repos (submodules)..."
+	@git submodule update --init --recursive
 
 install_tools: install_uv install_mediamtx
 
