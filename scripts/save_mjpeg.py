@@ -1,21 +1,13 @@
 """Save MJPEG snapshots or video clips from a remote mjpeg_debug server.
 
-Requires: pip install opencv-python, ffmpeg installed on PATH
+Requires: opencv-python, ffmpeg on PATH
 
 Usage:
-    # Set Thor IP once (or pass --host each time)
     export THOR_IP=192.168.5.20
 
-    # Snapshot all cameras
     python scripts/save_mjpeg.py --host $THOR_IP snapshot
-
-    # Snapshot one camera
     python scripts/save_mjpeg.py --host $THOR_IP snapshot --camera center
-
-    # Record 10s video from all cameras
     python scripts/save_mjpeg.py --host $THOR_IP record --duration 10
-
-    # Record center only, custom output dir
     python scripts/save_mjpeg.py --host $THOR_IP record --camera center --out ./captures
 """
 
@@ -24,7 +16,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -46,8 +37,7 @@ def snapshot(base_url: str, cameras: list[str], out_dir: Path):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     for name in cameras:
-        url = f"{base_url}/stream/{name}"
-        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        cap = cv2.VideoCapture(f"{base_url}/stream/{name}", cv2.CAP_FFMPEG)
         ret, frame = cap.read()
         cap.release()
 
@@ -60,35 +50,16 @@ def snapshot(base_url: str, cameras: list[str], out_dir: Path):
         print(f"  OK: {path}")
 
 
-def _have_ffmpeg() -> bool:
-    return shutil.which("ffmpeg") is not None
-
-
-def _remux_h264(raw_path: Path, out_path: Path, fps: int) -> bool:
-    """Re-encode a raw mp4v file to H.264 using ffmpeg."""
-    try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", str(raw_path),
-             "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-             "-pix_fmt", "yuv420p", "-r", str(fps), str(out_path)],
-            capture_output=True, check=True,
-        )
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-
-
 def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fps: int):
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    use_ffmpeg = _have_ffmpeg()
+    tmp_dir = Path(tempfile.mkdtemp())
 
+    # Open streams and start writing raw mp4v to temp dir
     caps = {}
     writers = {}
-    tmp_dir = Path(tempfile.mkdtemp()) if use_ffmpeg else None
     for name in cameras:
-        url = f"{base_url}/stream/{name}"
-        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        cap = cv2.VideoCapture(f"{base_url}/stream/{name}", cv2.CAP_FFMPEG)
         if not cap.isOpened():
             print(f"  FAIL: {name} — cannot open stream")
             continue
@@ -100,7 +71,7 @@ def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fp
             continue
 
         h, w = frame.shape[:2]
-        raw_path = (tmp_dir or out_dir) / f"{name}_{ts}.mp4"
+        raw_path = tmp_dir / f"{name}.mp4"
         writer = cv2.VideoWriter(str(raw_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
         writer.write(frame)
         caps[name] = cap
@@ -121,25 +92,23 @@ def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fp
                 writers[name][0].write(frame)
                 frames[name] += 1
 
+    # Release and re-encode to H.264
     for name in caps:
         caps[name].release()
         writers[name][0].release()
         raw_path = writers[name][1]
+        final_path = out_dir / f"{name}_{ts}.mp4"
 
-        if use_ffmpeg:
-            final_path = out_dir / f"{name}_{ts}.mp4"
-            if _remux_h264(raw_path, final_path, fps):
-                raw_path.unlink()
-                print(f"  OK: {final_path} ({frames[name]} frames, h264)")
-            else:
-                # Fallback: keep raw mp4v
-                raw_path.rename(final_path)
-                print(f"  OK: {final_path} ({frames[name]} frames, mp4v — ffmpeg failed)")
-        else:
-            print(f"  OK: {raw_path} ({frames[name]} frames, mp4v — install ffmpeg for h264)")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(raw_path),
+             "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+             "-pix_fmt", "yuv420p", "-r", str(fps), str(final_path)],
+            capture_output=True, check=True,
+        )
+        raw_path.unlink()
+        print(f"  OK: {final_path} ({frames[name]} frames)")
 
-    if tmp_dir:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.rmdir()
 
 
 def main():
