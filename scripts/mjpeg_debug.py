@@ -28,8 +28,8 @@ logger = logging.getLogger("mjpeg_debug")
 
 HOST = os.environ.get("MJPEG_HOST", "0.0.0.0")
 PORT = int(os.environ.get("MJPEG_PORT", "8001"))
-WIDTH = int(os.environ.get("CAMERA_WIDTH", "640"))
-HEIGHT = int(os.environ.get("CAMERA_HEIGHT", "480"))
+WIDTH = int(os.environ.get("CAMERA_WIDTH", "1280"))
+HEIGHT = int(os.environ.get("CAMERA_HEIGHT", "800"))
 FPS = int(os.environ.get("CAMERA_FPS", "30"))
 
 LAYOUT = ("left", "center", "right")
@@ -238,30 +238,30 @@ async def index():
 
     names = list(_cameras.keys())
 
-    def _tile(name: str, w: int, h: int) -> str:
+    def _tile(name: str, max_w: int) -> str:
         label = name.capitalize()
         return (
             f'<div style="text-align:center">'
             f'<div style="font-size:13px;color:#888;margin-bottom:4px">{label}</div>'
-            f'<img src="/stream/{name}" width="{w}" height="{h}" '
-            f'style="border:1px solid #333;border-radius:4px" />'
+            f'<img src="/stream/{name}" '
+            f'style="max-width:{max_w}px;width:100%;height:auto;'
+            f'border:1px solid #333;border-radius:4px" />'
             f"</div>"
         )
 
     # Center (OAK-D) on top row, left/right on bottom row
     top_row = ""
     bottom_tiles: list[str] = []
-    side_w, side_h = int(WIDTH * 0.75), int(HEIGHT * 0.75)
 
     for name in names:
         if name == "center":
             top_row = (
                 f'<div style="margin-bottom:12px">'
-                f"{_tile(name, WIDTH, HEIGHT)}"
+                f"{_tile(name, WIDTH)}"
                 f"</div>"
             )
         else:
-            bottom_tiles.append(_tile(name, side_w, side_h))
+            bottom_tiles.append(_tile(name, int(WIDTH * 0.75)))
 
     bottom_row = ""
     if bottom_tiles:
