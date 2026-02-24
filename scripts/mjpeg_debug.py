@@ -14,7 +14,6 @@ import asyncio
 import logging
 import os
 import signal
-import sys
 from contextlib import asynccontextmanager
 
 import depthai as dai
@@ -189,6 +188,8 @@ def _close_devices():
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _open_devices()
+    # Re-install hard exit after uvicorn replaces our SIGINT handler.
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
     yield
     _close_devices()
 
@@ -285,13 +286,10 @@ async def index():
 # ---------------------------------------------------------------------------
 
 _OAK_VENDOR = "03e7"
-_OAK_BOOTED_PRODUCT = "2485"   # MyriadX in BOOTED state
-_OAK_UNBOOTED_PRODUCT = "f63b"  # Myriad VPU in UNBOOTED state
-_USB_RECYCLE_TIMEOUT = 15  # seconds to wait for BOOTED → UNBOOTED
 
 
-def _find_oak_usb_devices() -> list[tuple[str, str, str]]:
-    """Return list of (bus, device, product_id) for all OAK USB devices."""
+def _find_oak_usb_devices() -> list[tuple[str, str]]:
+    """Return list of (bus, device) for all OAK USB devices."""
     import re
     import subprocess
 
@@ -305,9 +303,9 @@ def _find_oak_usb_devices() -> list[tuple[str, str, str]]:
 
     results = []
     for line in out.strip().splitlines():
-        m = re.match(r"Bus (\d+) Device (\d+): ID \w+:(\w+)", line)
+        m = re.match(r"Bus (\d+) Device (\d+):", line)
         if m:
-            results.append((m.group(1), m.group(2), m.group(3)))
+            results.append((m.group(1), m.group(2)))
     return results
 
 
@@ -322,7 +320,7 @@ def _kill_oak_holders():
     killed_any = False
     my_pid = os.getpid()
 
-    for bus, dev, _prod in devices:
+    for bus, dev in devices:
         dev_path = f"/dev/bus/usb/{bus}/{dev}"
         try:
             result = subprocess.run(
@@ -352,39 +350,9 @@ def _kill_oak_holders():
     return killed_any
 
 
-def _wait_usb_recycle():
-    """Wait until all OAK devices are in UNBOOTED state (product f63b)."""
-    import time
-
-    deadline = time.monotonic() + _USB_RECYCLE_TIMEOUT
-    while time.monotonic() < deadline:
-        devices = _find_oak_usb_devices()
-        booted = [d for d in devices if d[2] == _OAK_BOOTED_PRODUCT]
-        if not booted:
-            total = len(devices)
-            logger.info("All %d OAK device(s) are UNBOOTED — ready", total)
-            return True
-        remaining = deadline - time.monotonic()
-        logger.info(
-            "%d device(s) still BOOTED, waiting... (%.0fs left)",
-            len(booted), remaining,
-        )
-        time.sleep(1)
-
-    booted = [d for d in _find_oak_usb_devices() if d[2] == _OAK_BOOTED_PRODUCT]
-    if booted:
-        logger.warning(
-            "%d device(s) still BOOTED after %ds — they may fail to open",
-            len(booted), _USB_RECYCLE_TIMEOUT,
-        )
-    return not booted
-
-
 def _cleanup_previous():
-    """Kill processes holding OAK cameras or our port, wait for USB recycle."""
+    """Kill processes holding OAK cameras or our port."""
     import subprocess
-
-    killed = False
 
     # 1. Kill anything on our HTTP port.
     try:
@@ -394,18 +362,11 @@ def _cleanup_previous():
         )
         if result.returncode == 0:
             logger.info("Killed previous process on port %d", PORT)
-            killed = True
     except FileNotFoundError:
         pass
 
     # 2. Kill any process holding OAK USB device files.
-    if _kill_oak_holders():
-        killed = True
-
-    # 3. Wait for all devices to recycle to UNBOOTED.
-    if killed:
-        logger.info("Waiting for OAK USB devices to recycle...")
-    _wait_usb_recycle()
+    _kill_oak_holders()
 
 
 if __name__ == "__main__":
@@ -413,8 +374,8 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
-    # Graceful shutdown on Ctrl+C
-    signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
+    # Hard exit on Ctrl+C — blocking queue.get() threads prevent graceful shutdown.
+    signal.signal(signal.SIGINT, lambda *_: os._exit(0))
 
     _cleanup_previous()
 
