@@ -9,7 +9,7 @@ import {
 } from "../config";
 
 type WebRTCState = RTCPeerConnectionState | "idle";
-type StreamEntry = { id: string; stream: MediaStream };
+type StreamEntry = { id: string; name: string; stream: MediaStream };
 type PeerEntry = { id: string; pc: RTCPeerConnection };
 
 const CAMERAS_URL = `${API_BASE_URL}/webrtc/cameras`;
@@ -176,44 +176,45 @@ export function useWebRTC() {
         if (prev.some((entry) => entry.id === trackId)) {
           return prev;
         }
-        const next = [...prev, { id: trackId, stream: new MediaStream([track]) }];
+        const next = [
+          ...prev,
+          { id: trackId, name: cameraName, stream: new MediaStream([track]) },
+        ];
         streamsRef.current = next;
         return next;
       });
     }
 
+    async function fetchCameraNamesOnce(): Promise<string[] | null> {
+      try {
+        const response = await fetch(CAMERAS_URL, { signal: controller.signal });
+        const cameras = await response.json();
+        if (!isActive()) {
+          return null;
+        }
+        if (!Array.isArray(cameras)) {
+          return [];
+        }
+        return cameras.filter((camera): camera is string => typeof camera === "string");
+      } catch {
+        if (!isActive()) {
+          return null;
+        }
+        return [];
+      }
+    }
+
     async function fetchCameraNames(): Promise<string[] | null> {
       const deadline = Date.now() + Math.max(WHEP_CONNECT_TIMEOUT_MS, 30000);
       while (isActive()) {
-        try {
-          const response = await fetch(CAMERAS_URL, { signal: controller.signal });
-          const cameras = await response.json();
-          if (!isActive()) {
-            return null;
-          }
-          if (!Array.isArray(cameras)) {
-            if (Date.now() >= deadline) {
-              return [];
-            }
-            await delay(WHEP_CONNECT_RETRY_MS);
-            continue;
-          }
-          const cameraNames = cameras.filter(
-            (camera): camera is string => typeof camera === "string",
-          );
-          if (cameraNames.length > 0 || Date.now() >= deadline) {
-            return cameraNames;
-          }
-          await delay(WHEP_CONNECT_RETRY_MS);
-        } catch {
-          if (!isActive()) {
-            return null;
-          }
-          if (Date.now() >= deadline) {
-            return [];
-          }
-          await delay(WHEP_CONNECT_RETRY_MS);
+        const cameraNames = await fetchCameraNamesOnce();
+        if (cameraNames === null) {
+          return null;
         }
+        if (cameraNames.length > 0 || Date.now() >= deadline) {
+          return cameraNames;
+        }
+        await delay(WHEP_CONNECT_RETRY_MS);
       }
       return null;
     }
@@ -234,57 +235,92 @@ export function useWebRTC() {
         if (!isActive()) {
           return;
         }
-        syncConnectionState();
         if (pc.connectionState === "failed") {
-          disconnect();
+          // Tear down only this peer and reconnect it without affecting others.
+          pc.ontrack = null;
+          pc.onconnectionstatechange = null;
+          pc.close();
+          peersRef.current = peersRef.current.filter((entry) => entry !== peer);
+          setStreams((prev) => {
+            const next = prev.filter((entry) => entry.name !== cameraName);
+            streamsRef.current = next;
+            return next;
+          });
+          syncConnectionState();
+          reconnectCamera(cameraName).catch(() => {});
+          return;
         }
+        syncConnectionState();
       };
 
-      pc.addTransceiver("video", { direction: "recvonly" });
-      const offer = await pc.createOffer();
-      if (!isActive()) {
-        return;
-      }
-      await pc.setLocalDescription(offer);
-      await waitForIceGatheringComplete(pc, ICE_GATHER_TIMEOUT_MS);
-      if (!isActive()) {
-        return;
-      }
+      try {
+        pc.addTransceiver("video", { direction: "recvonly" });
+        const offer = await pc.createOffer();
+        if (!isActive()) {
+          return;
+        }
+        await pc.setLocalDescription(offer);
+        await waitForIceGatheringComplete(pc, ICE_GATHER_TIMEOUT_MS);
+        if (!isActive()) {
+          return;
+        }
 
-      const streamUrl = whepUrlForCamera(cameraName);
-      const deadline = Date.now() + WHEP_CONNECT_TIMEOUT_MS;
-      let response: Response | null = null;
+        const streamUrl = whepUrlForCamera(cameraName);
+        const deadline = Date.now() + WHEP_CONNECT_TIMEOUT_MS;
+        let response: Response | null = null;
+        while (isActive()) {
+          response = await fetch(streamUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/sdp" },
+            signal: controller.signal,
+            body: pc.localDescription?.sdp ?? offer.sdp ?? "",
+          });
+          if (response.ok) {
+            break;
+          }
+          const isRetryable = isWhepRetryableStatus(response.status);
+          if (!isRetryable || Date.now() >= deadline) {
+            throw new Error(`WHEP request failed (${response.status})`);
+          }
+          await delay(WHEP_CONNECT_RETRY_MS);
+        }
+        if (!isActive()) {
+          return;
+        }
+        if (!response || !response.ok) {
+          throw new Error(`WHEP request for ${cameraName} timed out waiting for stream availability.`);
+        }
+        const answerSdp = await response.text();
+        if (!answerSdp) {
+          throw new Error("WHEP request returned empty SDP answer.");
+        }
+
+        if (!isActive()) {
+          return;
+        }
+        await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+      } catch (err) {
+        // Clean up this peer on failure so reconnectCamera can start a fresh one.
+        peersRef.current = peersRef.current.filter((entry) => entry !== peer);
+        pc.ontrack = null;
+        pc.onconnectionstatechange = null;
+        pc.close();
+        throw err;
+      }
+    }
+
+    async function reconnectCamera(cameraName: string): Promise<void> {
       while (isActive()) {
-        response = await fetch(streamUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/sdp" },
-          signal: controller.signal,
-          body: pc.localDescription?.sdp ?? offer.sdp ?? "",
-        });
-        if (response.ok) {
-          break;
+        try {
+          await connectCamera(cameraName);
+          return;
+        } catch {
+          if (!isActive()) {
+            return;
+          }
+          await delay(WHEP_CONNECT_RETRY_MS);
         }
-        const isRetryable = isWhepRetryableStatus(response.status);
-        if (!isRetryable || Date.now() >= deadline) {
-          throw new Error(`WHEP request failed (${response.status})`);
-        }
-        await delay(WHEP_CONNECT_RETRY_MS);
       }
-      if (!isActive()) {
-        return;
-      }
-      if (!response || !response.ok) {
-        throw new Error(`WHEP request for ${cameraName} timed out waiting for stream availability.`);
-      }
-      const answerSdp = await response.text();
-      if (!answerSdp) {
-        throw new Error("WHEP request returned empty SDP answer.");
-      }
-
-      if (!isActive()) {
-        return;
-      }
-      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     }
 
     try {
@@ -304,6 +340,31 @@ export function useWebRTC() {
           return;
         }
         await connectCamera(cameraName);
+      }
+
+      // Some relay paths appear a bit later than the first camera list response.
+      // Connect newly discovered cameras in parallel so a slow ICE/WHEP handshake
+      // for one camera doesn't block others from being established.
+      const warmupDeadline = Date.now() + 10000;
+      while (isActive() && Date.now() < warmupDeadline) {
+        await delay(WHEP_CONNECT_RETRY_MS);
+        const latestNames = await fetchCameraNamesOnce();
+        if (latestNames === null) {
+          return;
+        }
+        if (latestNames.length > 0) {
+          setExpectedCameraCount(latestNames.length);
+        }
+        const newCameras = latestNames.filter(
+          (name) => !peersRef.current.some((entry) => entry.id === name),
+        );
+        if (newCameras.length > 0 && isActive()) {
+          await Promise.allSettled(
+            newCameras.map((name) =>
+              isActive() ? connectCamera(name).catch(() => {}) : Promise.resolve(),
+            ),
+          );
+        }
       }
 
       if (isActive()) {
