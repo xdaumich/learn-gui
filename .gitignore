@@ -29,3 +29,4 @@ coverage/
 
 # Local data logs
 data_logs/
+.worktrees/
