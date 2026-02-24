@@ -284,24 +284,128 @@ async def index():
 # Entry point
 # ---------------------------------------------------------------------------
 
-def _cleanup_previous():
-    """Kill any previous process holding our port and wait for USB device recycle."""
+_OAK_VENDOR = "03e7"
+_OAK_BOOTED_PRODUCT = "2485"   # MyriadX in BOOTED state
+_OAK_UNBOOTED_PRODUCT = "f63b"  # Myriad VPU in UNBOOTED state
+_USB_RECYCLE_TIMEOUT = 15  # seconds to wait for BOOTED → UNBOOTED
+
+
+def _find_oak_usb_devices() -> list[tuple[str, str, str]]:
+    """Return list of (bus, device, product_id) for all OAK USB devices."""
+    import re
     import subprocess
+
+    try:
+        out = subprocess.run(
+            ["lsusb", "-d", f"{_OAK_VENDOR}:"],
+            capture_output=True, text=True,
+        ).stdout
+    except FileNotFoundError:
+        return []
+
+    results = []
+    for line in out.strip().splitlines():
+        m = re.match(r"Bus (\d+) Device (\d+): ID \w+:(\w+)", line)
+        if m:
+            results.append((m.group(1), m.group(2), m.group(3)))
+    return results
+
+
+def _kill_oak_holders():
+    """Find and kill any process holding OAK USB device files."""
+    import subprocess
+
+    devices = _find_oak_usb_devices()
+    if not devices:
+        return False
+
+    killed_any = False
+    my_pid = os.getpid()
+
+    for bus, dev, _prod in devices:
+        dev_path = f"/dev/bus/usb/{bus}/{dev}"
+        try:
+            result = subprocess.run(
+                ["fuser", dev_path],
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                continue
+            pids = result.stdout.split()
+            for pid_str in pids:
+                pid = int(pid_str.strip().rstrip("m"))
+                if pid == my_pid:
+                    continue
+                logger.info("Killing PID %d holding %s", pid, dev_path)
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                    killed_any = True
+                except PermissionError:
+                    # Root-owned process — escalate with sudo.
+                    logger.info("Escalating to sudo kill -9 %d", pid)
+                    subprocess.run(["sudo", "kill", "-9", str(pid)])
+                    killed_any = True
+                except ProcessLookupError:
+                    pass
+        except FileNotFoundError:
+            pass
+    return killed_any
+
+
+def _wait_usb_recycle():
+    """Wait until all OAK devices are in UNBOOTED state (product f63b)."""
     import time
 
-    # fuser -k sends SIGKILL to all processes using the port (exit 0 = found & killed)
+    deadline = time.monotonic() + _USB_RECYCLE_TIMEOUT
+    while time.monotonic() < deadline:
+        devices = _find_oak_usb_devices()
+        booted = [d for d in devices if d[2] == _OAK_BOOTED_PRODUCT]
+        if not booted:
+            total = len(devices)
+            logger.info("All %d OAK device(s) are UNBOOTED — ready", total)
+            return True
+        remaining = deadline - time.monotonic()
+        logger.info(
+            "%d device(s) still BOOTED, waiting... (%.0fs left)",
+            len(booted), remaining,
+        )
+        time.sleep(1)
+
+    booted = [d for d in _find_oak_usb_devices() if d[2] == _OAK_BOOTED_PRODUCT]
+    if booted:
+        logger.warning(
+            "%d device(s) still BOOTED after %ds — they may fail to open",
+            len(booted), _USB_RECYCLE_TIMEOUT,
+        )
+    return not booted
+
+
+def _cleanup_previous():
+    """Kill processes holding OAK cameras or our port, wait for USB recycle."""
+    import subprocess
+
+    killed = False
+
+    # 1. Kill anything on our HTTP port.
     try:
         result = subprocess.run(
             ["fuser", "-k", "-KILL", f"{PORT}/tcp"],
             capture_output=True, text=True,
         )
-        killed = result.returncode == 0
+        if result.returncode == 0:
+            logger.info("Killed previous process on port %d", PORT)
+            killed = True
     except FileNotFoundError:
-        killed = False
+        pass
 
+    # 2. Kill any process holding OAK USB device files.
+    if _kill_oak_holders():
+        killed = True
+
+    # 3. Wait for all devices to recycle to UNBOOTED.
     if killed:
-        logger.info("Killed previous process on port %d, waiting for USB devices to recycle...", PORT)
-        time.sleep(5)
+        logger.info("Waiting for OAK USB devices to recycle...")
+    _wait_usb_recycle()
 
 
 if __name__ == "__main__":
