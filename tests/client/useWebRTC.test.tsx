@@ -80,80 +80,8 @@ describe("useWebRTC", () => {
     vi.unstubAllGlobals();
   });
 
-  test("connect negotiates WHEP and updates connection state", async () => {
-    FakeRTCPeerConnection.instances = [];
-    vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
-    vi.stubGlobal("MediaStream", FakeMediaStream);
-
-    const fetchMock = vi.fn().mockImplementation((url: string) => {
-      if (url.endsWith("/webrtc/cameras")) {
-        return Promise.resolve({
-          json: async () => ["CAM_A", "CAM_B"],
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 201,
-        text: async () => "answer-sdp",
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const apiRef: { current: HookApi | null } = { current: null };
-    render(
-      <Harness
-        onReady={(value) => {
-          apiRef.current = value;
-        }}
-      />,
-    );
-    await waitFor(() => {
-      expect(apiRef.current).not.toBeNull();
-    });
-    expect((apiRef.current as HookApi).connectionState).toBe("idle");
-    await (apiRef.current as HookApi).connect();
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/webrtc/cameras",
-      expect.objectContaining({ signal: expect.anything() }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8889/cam_a/whep",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "application/sdp" },
-      }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8889/cam_b/whep",
-      expect.objectContaining({
-        method: "POST",
-      }),
-    );
-    await waitFor(() => {
-      expect((apiRef.current as HookApi).connectionState).toBe("connected");
-    });
-    expect((apiRef.current as HookApi).expectedCameraCount).toBe(2);
-    expect((apiRef.current as HookApi).partialLive).toBe(false);
-
-    const firstPc = FakeRTCPeerConnection.instances[0];
-    const secondPc = FakeRTCPeerConnection.instances[1];
-    expect(firstPc.transceivers).toHaveLength(1);
-    expect(secondPc.transceivers).toHaveLength(1);
-    firstPc.ontrack?.(
-      { track: { id: "track-1" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
-    );
-    secondPc.ontrack?.(
-      { track: { id: "track-2" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
-    );
-
-    await waitFor(() => {
-      expect((apiRef.current as HookApi).streams).toHaveLength(2);
-    });
-  });
-
   test(
-    "flags partial live stream when expected cameras are missing",
+    "connect negotiates WHEP for all three cameras",
     async () => {
       FakeRTCPeerConnection.instances = [];
       vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
@@ -162,7 +90,94 @@ describe("useWebRTC", () => {
       const fetchMock = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith("/webrtc/cameras")) {
           return Promise.resolve({
-            json: async () => ["CAM_A", "CAM_B"],
+            json: async () => ["left", "center", "right"],
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          text: async () => "answer-sdp",
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const apiRef: { current: HookApi | null } = { current: null };
+      render(
+        <Harness
+          onReady={(value) => {
+            apiRef.current = value;
+          }}
+        />,
+      );
+      await waitFor(() => {
+        expect(apiRef.current).not.toBeNull();
+      });
+      expect((apiRef.current as HookApi).connectionState).toBe("idle");
+      await (apiRef.current as HookApi).connect();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8000/webrtc/cameras",
+        expect.objectContaining({ signal: expect.anything() }),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8889/left/whep",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+        }),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8889/center/whep",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8889/right/whep",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+      await waitFor(() => {
+        expect((apiRef.current as HookApi).connectionState).toBe("connected");
+      });
+      expect((apiRef.current as HookApi).expectedCameraCount).toBe(3);
+
+      expect(FakeRTCPeerConnection.instances).toHaveLength(3);
+      const [firstPc, secondPc, thirdPc] = FakeRTCPeerConnection.instances;
+      expect(firstPc.transceivers).toHaveLength(1);
+      expect(secondPc.transceivers).toHaveLength(1);
+      expect(thirdPc.transceivers).toHaveLength(1);
+
+      firstPc.ontrack?.(
+        { track: { id: "track-1" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
+      );
+      secondPc.ontrack?.(
+        { track: { id: "track-2" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
+      );
+      thirdPc.ontrack?.(
+        { track: { id: "track-3" } as MediaStreamTrack, streams: [] } as unknown as RTCTrackEvent,
+      );
+
+      await waitFor(() => {
+        expect((apiRef.current as HookApi).streams).toHaveLength(3);
+      });
+      expect((apiRef.current as HookApi).partialLive).toBe(false);
+    },
+    15000,
+  );
+
+  test(
+    "flags partial live when fewer than 3 cameras are streaming",
+    async () => {
+      FakeRTCPeerConnection.instances = [];
+      vi.stubGlobal("RTCPeerConnection", FakeRTCPeerConnection);
+      vi.stubGlobal("MediaStream", FakeMediaStream);
+
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith("/webrtc/cameras")) {
+          return Promise.resolve({
+            json: async () => ["left", "center", "right"],
           });
         }
         return Promise.resolve({
@@ -189,7 +204,7 @@ describe("useWebRTC", () => {
 
       await waitFor(() => {
         expect((apiRef.current as HookApi).connectionState).toBe("connected");
-        expect((apiRef.current as HookApi).expectedCameraCount).toBe(2);
+        expect((apiRef.current as HookApi).expectedCameraCount).toBe(3);
       });
 
       const firstPc = FakeRTCPeerConnection.instances[0];
@@ -207,6 +222,6 @@ describe("useWebRTC", () => {
         expect((apiRef.current as HookApi).partialLive).toBe(true);
       });
     },
-    12000,
+    20000,
   );
 });

@@ -14,5 +14,9 @@ export default defineConfig({
     setupFiles: path.resolve(repoRoot, "tests/client/setupTests.ts"),
     css: true,
     include: [path.resolve(repoRoot, "tests/client/**/*.test.{ts,tsx}")],
+    env: {
+      VITE_API_BASE_URL: "http://localhost:8000",
+      VITE_WHEP_BASE_URL: "http://localhost:8889",
+    },
   },
 });
