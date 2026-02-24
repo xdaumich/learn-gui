@@ -1,9 +1,9 @@
-"""Backward-compat shim for webrtc module."""
+"""Re-exports from telemetry_console.camera for backward compatibility."""
 
 import av  # noqa: F401
 
 from telemetry_console.camera import (  # noqa: F401
-    ensure_streaming as _ensure_streaming,
+    ensure_streaming,
     stop_streaming,
     list_camera_sockets,
     order_camera_sockets,
@@ -16,10 +16,7 @@ from telemetry_console.camera import (  # noqa: F401
     stream_name_for_camera,
     stream_name_for_socket,
     CAMERA_LAYOUT_SOCKET_ORDER,
+    CAMERA_STREAM_LAYOUT,
     _resolve_candidate_sockets,
+    list_stream_names,
 )
-
-
-def ensure_streaming(*, recording_manager=None, **kwargs):
-    """Compat wrapper: ignores recording_manager parameter."""
-    return _ensure_streaming(**kwargs)

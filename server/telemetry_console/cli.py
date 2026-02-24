@@ -50,81 +50,94 @@ def run_camera() -> None:
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--startup-timeout", type=float, default=20.0)
     parser.add_argument("--retry-interval", type=float, default=0.5)
+    parser.add_argument(
+        "--min-cameras",
+        type=int,
+        default=int(os.environ.get("MIN_CAMERAS", "3")),
+        help="Keep retrying during startup until this many camera streams are active.",
+    )
     args = parser.parse_args()
 
-    from telemetry_console.camera import ensure_streaming, list_camera_sockets
+    from telemetry_console.camera import ensure_streaming, list_stream_targets, stop_streaming
 
     startup_timeout = float(args.startup_timeout)
+    min_cameras = max(1, int(args.min_cameras))
     deadline: float | None = None
     if startup_timeout > 0:
         deadline = time.time() + max(0.1, startup_timeout)
+    retry_interval = max(0.05, float(args.retry_interval))
     last_error: Exception | None = None
-    active_sockets = []
-    while deadline is None or time.time() < deadline:
-        try:
-            sockets = list_camera_sockets()
-        except Exception as exc:  # pragma: no cover - hardware/runtime dependent
-            last_error = exc
-            time.sleep(max(0.05, float(args.retry_interval)))
-            continue
-        if not sockets:
-            time.sleep(max(0.05, float(args.retry_interval)))
-            continue
+    active_streams: list[str] = []
+    try:
+        while deadline is None or time.time() < deadline:
+            try:
+                active_streams = ensure_streaming(
+                    camera_sockets=None,
+                    width=args.width,
+                    height=args.height,
+                    fps=args.fps,
+                )
+                if len(active_streams) >= min_cameras:
+                    break
+                # Have some streams but not enough — keep retrying for remaining slots.
+            except Exception as exc:  # pragma: no cover - hardware/runtime dependent
+                # DepthAI can intermittently throw RuntimeError/ValueError while USB
+                # devices are booting. Keep retrying until startup timeout.
+                last_error = exc
+            time.sleep(retry_interval)
+    except KeyboardInterrupt:
+        stop_streaming()
+        return
 
-        try:
-            active_sockets = ensure_streaming(
-                camera_sockets=sockets,
-                width=args.width,
-                height=args.height,
-                fps=args.fps,
-            )
-            if active_sockets:
-                break
-        except Exception as exc:  # pragma: no cover - hardware/runtime dependent
-            # DepthAI can intermittently throw RuntimeError/ValueError while USB
-            # devices are booting. Keep retrying until startup timeout.
-            last_error = exc
-        time.sleep(max(0.05, float(args.retry_interval)))
-
-    if not active_sockets:
+    if not active_streams:
         if deadline is None:
             print("[tc-camera] Waiting for cameras (startup timeout disabled).")
-            try:
-                while True:
-                    try:
-                        sockets = list_camera_sockets()
-                        if sockets:
-                            active_sockets = ensure_streaming(
-                                camera_sockets=sockets,
-                                width=args.width,
-                                height=args.height,
-                                fps=args.fps,
-                            )
-                            if active_sockets:
-                                break
-                    except Exception as exc:  # pragma: no cover - hardware/runtime dependent
-                        last_error = exc
-                    time.sleep(max(0.05, float(args.retry_interval)))
-            except KeyboardInterrupt:
-                from telemetry_console.camera import stop_streaming
-
-                stop_streaming()
-                return
-
-        if last_error is None:
+        elif last_error is None:
             print("[tc-camera] No cameras found before startup timeout.")
         else:
             print(f"[tc-camera] Failed to start relay: {last_error}")
-        if not active_sockets:
-            sys.exit(1)
+        sys.exit(1)
 
-    print(f"[tc-camera] Streaming {len(active_sockets)} camera(s). Press Ctrl+C to stop.")
+    def _print_stream_state(stream_names: list[str]) -> tuple[tuple[str, str, str], ...]:
+        print(
+            f"[tc-camera] Streaming {len(stream_names)} camera stream(s): "
+            f"{', '.join(stream_names)}. Press Ctrl+C to stop."
+        )
+        snapshot: list[tuple[str, str, str]] = []
+        for target in list_stream_targets():
+            snapshot.append((target.stream_name, target.device_name, target.device_id))
+            print(
+                f"[tc-camera]   slot={target.stream_name} "
+                f"model={target.device_name} mxid={target.device_id}"
+            )
+        return tuple(snapshot)
+
+    last_snapshot = _print_stream_state(active_streams)
     try:
         while True:
-            time.sleep(1.0)
+            time.sleep(max(0.25, retry_interval))
+            try:
+                refreshed = ensure_streaming(
+                    camera_sockets=None,
+                    width=args.width,
+                    height=args.height,
+                    fps=args.fps,
+                )
+            except Exception as exc:  # pragma: no cover - hardware/runtime dependent
+                # Keep running so reconnection can recover streams.
+                last_error = exc
+                continue
+            if refreshed != active_streams:
+                active_streams = refreshed
+                last_snapshot = _print_stream_state(active_streams)
+                continue
+            snapshot = tuple(
+                (target.stream_name, target.device_name, target.device_id)
+                for target in list_stream_targets()
+            )
+            if snapshot != last_snapshot:
+                last_snapshot = _print_stream_state(active_streams)
     except KeyboardInterrupt:
-        from telemetry_console.camera import stop_streaming
-
         stop_streaming()
 
 
