@@ -16,9 +16,6 @@ function envNumber(value: string | undefined, fallback: number): number {
 export const API_BASE_URL = trimTrailingSlash(
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000",
 );
-export const WHEP_BASE_URL = trimTrailingSlash(
-  import.meta.env.VITE_WHEP_BASE_URL ?? "http://localhost:8889",
-);
 
 export const CAMERA_LIVE_GRACE_MS = envNumber(import.meta.env.VITE_CAMERA_LIVE_GRACE_MS, 4000);
 export const WHEP_CONNECT_RETRY_MS = envNumber(

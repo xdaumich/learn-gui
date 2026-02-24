@@ -14,6 +14,7 @@ def test_gui_api_routes_exist():
     assert "/rerun/status" in routes
     assert "/robot/status" in routes
     assert "/webrtc/cameras" in routes
+    assert "/webrtc/{camera}/whep" in routes
     assert "/recording/status" in routes
     assert "/recording/start" in routes
     assert "/recording/stop" in routes

@@ -3,7 +3,6 @@ import {
   API_BASE_URL,
   CAMERA_LIVE_GRACE_MS,
   ICE_GATHER_TIMEOUT_MS,
-  WHEP_BASE_URL,
   WHEP_CONNECT_RETRY_MS,
   WHEP_CONNECT_TIMEOUT_MS,
 } from "../config";
@@ -30,7 +29,7 @@ function streamPathForCamera(cameraName: string): string {
 
 function whepUrlForCamera(cameraName: string): string {
   const streamPath = encodeURIComponent(streamPathForCamera(cameraName));
-  return `${WHEP_BASE_URL}/${streamPath}/whep`;
+  return `${API_BASE_URL}/webrtc/${streamPath}/whep`;
 }
 
 function delay(ms: number): Promise<void> {

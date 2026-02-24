@@ -8,7 +8,6 @@ import pytest
 def test_cli_module_imports():
     mod = importlib.import_module("telemetry_console.cli")
     assert callable(getattr(mod, "run_gui", None))
-    assert callable(getattr(mod, "run_camera", None))
     assert callable(getattr(mod, "run_robot", None))
     assert callable(getattr(mod, "run_recorder", None))
     assert callable(getattr(mod, "run_replay", None))

@@ -15,6 +15,7 @@ dependencies = [
     "numcodecs",
     "pyzmq",
     "msgpack",
+    "aiortc>=1.9",
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,6 @@ line-length = 100
 
 [project.scripts]
 tc-gui = "telemetry_console.cli:run_gui"
-tc-camera = "telemetry_console.cli:run_camera"
 tc-robot = "telemetry_console.cli:run_robot"
 tc-recorder = "telemetry_console.cli:run_recorder"
 tc-replay = "telemetry_console.cli:run_replay"

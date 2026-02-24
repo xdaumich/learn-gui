@@ -16,7 +16,6 @@ export default defineConfig({
     include: [path.resolve(repoRoot, "tests/client/**/*.test.{ts,tsx}")],
     env: {
       VITE_API_BASE_URL: "http://localhost:8000",
-      VITE_WHEP_BASE_URL: "http://localhost:8889",
     },
   },
 });
