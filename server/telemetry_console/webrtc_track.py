@@ -33,23 +33,33 @@ class H264Track(MediaStreamTrack):
         self._drain_thread.start()
 
     def _drain_loop(self) -> None:
-        """Background thread: continuously drain DepthAI queue, keep latest packet."""
+        """Background thread: continuously drain DepthAI queue, keep latest packet.
+
+        Drains ALL available packets in a burst (matching the old
+        CameraRelayPublisher behavior) to prevent XLink buffer backup.
+        """
         while not self._stop.is_set():
-            try:
-                dai_pkt = self._queue.tryGet()
-            except Exception:
-                self._stop.wait(0.01)
-                continue
-            if dai_pkt is None:
-                self._stop.wait(0.005)
-                continue
-            try:
-                nal_bytes = bytes(dai_pkt.getData())
-            except Exception:
-                continue
-            if nal_bytes:
-                self._latest = nal_bytes
-                self._event.set()
+            drained_any = False
+            # Drain all queued packets in a burst — XLink can buffer many
+            # frames internally, and we must consume them before the device
+            # side overflows.
+            while True:
+                try:
+                    dai_pkt = self._queue.tryGet()
+                except Exception:
+                    break
+                if dai_pkt is None:
+                    break
+                drained_any = True
+                try:
+                    nal_bytes = bytes(dai_pkt.getData())
+                except Exception:
+                    continue
+                if nal_bytes:
+                    self._latest = nal_bytes
+                    self._event.set()
+            if not drained_any:
+                self._stop.wait(0.001)  # 1ms idle sleep — tight poll
 
     async def recv(self) -> av.Packet:
         loop = asyncio.get_event_loop()

@@ -237,7 +237,7 @@ def build_h264_pipeline(
         pass
 
     cam_out.link(encoder.input)
-    queue = encoder.out.createOutputQueue(maxSize=4, blocking=False)
+    queue = encoder.out.createOutputQueue(maxSize=1, blocking=False)
     return pipeline, queue
 
 
