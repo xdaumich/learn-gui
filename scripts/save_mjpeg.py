@@ -1,10 +1,10 @@
 """Save MJPEG snapshots or video clips from a remote mjpeg_debug server.
 
-Requires: pip install opencv-python
+Requires: pip install opencv-python, ffmpeg installed on PATH
 
 Usage:
     # Set Thor IP once (or pass --host each time)
-    export THOR_IP=10.112.210.46
+    export THOR_IP=192.168.5.20
 
     # Snapshot all cameras
     python scripts/save_mjpeg.py --host $THOR_IP snapshot
@@ -24,7 +24,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -44,7 +47,7 @@ def snapshot(base_url: str, cameras: list[str], out_dir: Path):
 
     for name in cameras:
         url = f"{base_url}/stream/{name}"
-        cap = cv2.VideoCapture(url)
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         ret, frame = cap.read()
         cap.release()
 
@@ -57,15 +60,35 @@ def snapshot(base_url: str, cameras: list[str], out_dir: Path):
         print(f"  OK: {path}")
 
 
+def _have_ffmpeg() -> bool:
+    return shutil.which("ffmpeg") is not None
+
+
+def _remux_h264(raw_path: Path, out_path: Path, fps: int) -> bool:
+    """Re-encode a raw mp4v file to H.264 using ffmpeg."""
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(raw_path),
+             "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+             "-pix_fmt", "yuv420p", "-r", str(fps), str(out_path)],
+            capture_output=True, check=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
 def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fps: int):
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    use_ffmpeg = _have_ffmpeg()
 
     caps = {}
     writers = {}
+    tmp_dir = Path(tempfile.mkdtemp()) if use_ffmpeg else None
     for name in cameras:
         url = f"{base_url}/stream/{name}"
-        cap = cv2.VideoCapture(url)
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         if not cap.isOpened():
             print(f"  FAIL: {name} — cannot open stream")
             continue
@@ -77,11 +100,11 @@ def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fp
             continue
 
         h, w = frame.shape[:2]
-        path = out_dir / f"{name}_{ts}.mp4"
-        writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+        raw_path = (tmp_dir or out_dir) / f"{name}_{ts}.mp4"
+        writer = cv2.VideoWriter(str(raw_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
         writer.write(frame)
         caps[name] = cap
-        writers[name] = (writer, path)
+        writers[name] = (writer, raw_path)
 
     if not caps:
         print("No cameras available")
@@ -101,7 +124,22 @@ def record(base_url: str, cameras: list[str], out_dir: Path, duration: float, fp
     for name in caps:
         caps[name].release()
         writers[name][0].release()
-        print(f"  OK: {writers[name][1]} ({frames[name]} frames)")
+        raw_path = writers[name][1]
+
+        if use_ffmpeg:
+            final_path = out_dir / f"{name}_{ts}.mp4"
+            if _remux_h264(raw_path, final_path, fps):
+                raw_path.unlink()
+                print(f"  OK: {final_path} ({frames[name]} frames, h264)")
+            else:
+                # Fallback: keep raw mp4v
+                raw_path.rename(final_path)
+                print(f"  OK: {final_path} ({frames[name]} frames, mp4v — ffmpeg failed)")
+        else:
+            print(f"  OK: {raw_path} ({frames[name]} frames, mp4v — install ffmpeg for h264)")
+
+    if tmp_dir:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def main():
