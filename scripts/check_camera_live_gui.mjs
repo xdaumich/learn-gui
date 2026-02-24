@@ -20,6 +20,7 @@ const chromiumArgsRaw =
   "--enable-features=WebRtcAllowH265Receive,PlatformHEVCDecoderSupport --force-fieldtrials=WebRTC-Video-H26xPacketBuffer/Enable/";
 const timeoutMs = Number(process.env.CAMERA_GUARD_TIMEOUT_MS || 20_000);
 const pollMs = Number(process.env.CAMERA_GUARD_POLL_MS || 500);
+const minCameras = Number(process.env.CAMERA_GUARD_MIN_CAMERAS || 3);
 const successSnapshotPath =
   process.env.CAMERA_GUARD_GUI_SUCCESS_SNAPSHOT ||
   path.join(repoRoot, "docs/assets/screenshots/camera-live-guard-success.png");
@@ -52,6 +53,8 @@ async function waitForExpectedCameras(deadline) {
   const camerasUrl = `${apiBaseUrl}/webrtc/cameras`;
   let lastError = null;
 
+  let best = [];
+
   while (Date.now() < deadline) {
     try {
       const health = await fetchJson(healthUrl);
@@ -64,14 +67,27 @@ async function waitForExpectedCameras(deadline) {
         throw new Error("/webrtc/cameras response is not an array.");
       }
       const names = cameras.filter((name) => typeof name === "string");
+      if (names.length > best.length) {
+        best = names;
+        console.log(
+          `[camera-guard:gui] Discovered ${best.length} camera(s) so far: ${best.join(", ")}.`,
+        );
+      }
+      if (best.length > 0 && (minCameras <= 0 || best.length >= minCameras)) {
+        return best;
+      }
       if (names.length === 0) {
         throw new Error("No cameras detected by /webrtc/cameras.");
       }
-      return names;
+      await sleep(pollMs);
     } catch (error) {
       lastError = error;
       await sleep(pollMs);
     }
+  }
+
+  if (best.length > 0) {
+    return best;
   }
 
   throw new Error(`Timed out waiting for camera API readiness (${String(lastError)})`);
@@ -102,6 +118,25 @@ async function ensureSnapshotDir(snapshotPath) {
   await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
 }
 
+async function readCurrentTimes(page) {
+  const locator = page.locator(videoSelector);
+  return locator.evaluateAll((videos) => videos.map((v) => v.currentTime));
+}
+
+async function verifyCurrentTimeAdvancing(page, { pollIntervalMs = 2000 } = {}) {
+  const t0 = await readCurrentTimes(page);
+  await sleep(pollIntervalMs);
+  const t1 = await readCurrentTimes(page);
+  const results = t0.map((val, i) => ({
+    index: i,
+    t0: val,
+    t1: t1[i],
+    advancing: t1[i] > val,
+  }));
+  const advancingCount = results.filter((r) => r.advancing).length;
+  return { results, advancingCount };
+}
+
 async function run() {
   const deadline = Date.now() + timeoutMs;
   const expectedCameras = await waitForExpectedCameras(deadline);
@@ -109,6 +144,12 @@ async function run() {
   console.log(
     `[camera-guard:gui] Expected cameras: ${expectedCount} (${expectedCameras.join(", ")}).`,
   );
+  if (minCameras > 0 && expectedCount < minCameras) {
+    console.error(
+      `[camera-guard:gui] ERROR: only ${expectedCount} camera(s) detected, minimum required is ${minCameras}.`,
+    );
+    return 1;
+  }
 
   let browser;
   let page;
@@ -159,10 +200,22 @@ async function run() {
 
       lastStats = await readVideoStats(page);
       if (lastStats.tileCount >= expectedCount && lastStats.liveCount >= expectedCount) {
+        const { results, advancingCount } = await verifyCurrentTimeAdvancing(page);
+        if (advancingCount < expectedCount) {
+          const detail = results
+            .map((r) => `cam${r.index}: t0=${r.t0.toFixed(3)} t1=${r.t1.toFixed(3)} advancing=${r.advancing}`)
+            .join(", ");
+          await ensureSnapshotDir(failureSnapshotPath);
+          await page.screenshot({ path: failureSnapshotPath, fullPage: true });
+          console.error(
+            `[camera-guard:gui] ERROR: decode check failed — ${advancingCount}/${expectedCount} advancing (${detail}). Snapshot: ${failureSnapshotPath}`,
+          );
+          return 1;
+        }
         await ensureSnapshotDir(successSnapshotPath);
         await page.screenshot({ path: successSnapshotPath, fullPage: true });
         console.log(
-          `[camera-guard:gui] PASS: ${lastStats.liveCount}/${expectedCount} live camera tiles. Snapshot: ${successSnapshotPath}`,
+          `[camera-guard:gui] PASS: ${lastStats.liveCount}/${expectedCount} live camera tiles, decode verified (${advancingCount}/${expectedCount} advancing). Snapshot: ${successSnapshotPath}`,
         );
         return 0;
       }

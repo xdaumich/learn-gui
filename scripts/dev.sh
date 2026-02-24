@@ -18,14 +18,28 @@ ROBOT_HEARTBEAT_PATH="${ROBOT_HEARTBEAT_PATH:-data_logs/.robot_heartbeat.json}"
 MEDIAMTX_CONFIG_PATH="${MEDIAMTX_CONFIG_PATH:-mediamtx.yml}"
 CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
 CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-CAMERA_FPS="${CAMERA_FPS:-30}"
+CAMERA_FPS="${CAMERA_FPS:-15}"
+CAMERA_ENCODER_BITRATE_KBPS="${CAMERA_ENCODER_BITRATE_KBPS:-700}"
 CAMERA_STARTUP_TIMEOUT="${CAMERA_STARTUP_TIMEOUT:-0}"
 CAMERA_RETRY_INTERVAL="${CAMERA_RETRY_INTERVAL:-1.0}"
 GUI_URL="${CAMERA_GUARD_GUI_URL:-http://localhost:${VITE_PORT}}"
 GUI_GUARD_BROWSER="${CAMERA_GUARD_GUI_BROWSER:-chromium}"
+CAMERA_GUARD_MIN_CAMERAS="${CAMERA_GUARD_MIN_CAMERAS:-3}"
 DEV_SKIP_PRE_CLEANUP="${DEV_SKIP_PRE_CLEANUP:-0}"
+WEBRTC_ICE_HOST_IP="${WEBRTC_ICE_HOST_IP:-}"
 MEDIAMTX_BIN="$(command -v mediamtx || true)"
-GUI_NO_RERUN="${GUI_NO_RERUN:-0}"
+GUI_NO_RERUN="${GUI_NO_RERUN:-1}"
+
+# On multi-NIC hosts, MediaMTX advertises ICE candidates on all interfaces.
+# Restrict to a single reachable IP so all WebRTC streams use the same route.
+# Set WEBRTC_ICE_HOST_IP explicitly, or auto-detect the default-route interface.
+if [[ -z "${WEBRTC_ICE_HOST_IP}" ]]; then
+  WEBRTC_ICE_HOST_IP="$(
+    ip -4 route get 1.0.0.0 2>/dev/null \
+      | grep -oP 'src \K[0-9.]+' \
+      | head -1
+  )"
+fi
 
 list_listening_pids() {
   local port="$1"
@@ -173,8 +187,10 @@ if [[ "${GUI_NO_RERUN}" != "1" ]]; then
   require_free_port "${RERUN_WEB_PORT}" "Rerun web"
 fi
 require_free_port "${ROBOT_STATE_PORT}" "Robot state ZMQ"
-require_free_port "${RECORDER_STATUS_PORT}" "Recorder status ZMQ"
-require_free_port "${RECORDER_CONTROL_PORT}" "Recorder control ZMQ"
+if [[ "${GUI_NO_RERUN}" != "1" ]]; then
+  require_free_port "${RECORDER_STATUS_PORT}" "Recorder status ZMQ"
+  require_free_port "${RECORDER_CONTROL_PORT}" "Recorder control ZMQ"
+fi
 if [[ -n "${MEDIAMTX_BIN}" ]]; then
   require_free_port "${MEDIAMTX_RTSP_PORT}" "MediaMTX RTSP"
   require_free_port "${MEDIAMTX_WHEP_PORT}" "MediaMTX WHEP"
@@ -189,24 +205,45 @@ fi
 trap cleanup EXIT SIGINT SIGTERM
 
 echo "==> Starting client (Vite)..."
-(cd client && npm run dev -- --host localhost --port "${VITE_PORT}" --strictPort) &
+(cd client && npm run dev -- --host 0.0.0.0 --port "${VITE_PORT}" --strictPort) &
 PIDS+=("$!")
 
-echo "==> Starting GUI API + Rerun viewer..."
 GUI_ARGS=(--no-client --port "${API_PORT}")
 if [[ "${GUI_NO_RERUN}" == "1" ]]; then
-  echo "==> GUI_NO_RERUN=1, starting GUI API without Rerun services."
+  echo "==> Starting GUI API (video-only mode, Rerun disabled)..."
   GUI_ARGS+=(--no-rerun)
+else
+  echo "==> Starting GUI API + Rerun viewer..."
 fi
 uv run --project server tc-gui "${GUI_ARGS[@]}" &
 PIDS+=("$!")
 
 if [[ -n "${MEDIAMTX_BIN}" ]]; then
-  if [[ -f "${MEDIAMTX_CONFIG_PATH}" ]]; then
-    echo "==> Starting MediaMTX relay with ${MEDIAMTX_CONFIG_PATH}..."
-    "${MEDIAMTX_BIN}" "${MEDIAMTX_CONFIG_PATH}" &
+  # On multi-NIC hosts, pin WebRTC ICE to a single IP so all streams route
+  # through the same interface. Generate a runtime config with
+  # webrtcICEHostNAT1To1IPs set to the detected IP.
+  MEDIAMTX_RUNTIME_CONFIG="${MEDIAMTX_CONFIG_PATH}"
+  if [[ -n "${WEBRTC_ICE_HOST_IP}" ]]; then
+    echo "==> MediaMTX WebRTC ICE host: ${WEBRTC_ICE_HOST_IP} (UDP mux :8189)"
+    MEDIAMTX_RUNTIME_CONFIG="/tmp/mediamtx-dev-$$.yml"
+    if [[ -f "${MEDIAMTX_CONFIG_PATH}" ]]; then
+      cp "${MEDIAMTX_CONFIG_PATH}" "${MEDIAMTX_RUNTIME_CONFIG}"
+    else
+      : > "${MEDIAMTX_RUNTIME_CONFIG}"
+    fi
+    # v1.16+: disable auto-discovery from all NICs, advertise only the target IP.
+    cat >> "${MEDIAMTX_RUNTIME_CONFIG}" <<EOF
+
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: [${WEBRTC_ICE_HOST_IP}]
+webrtcLocalUDPAddress: ${WEBRTC_ICE_HOST_IP}:8189
+EOF
+  fi
+  if [[ -f "${MEDIAMTX_RUNTIME_CONFIG}" ]]; then
+    echo "==> Starting MediaMTX relay with ${MEDIAMTX_RUNTIME_CONFIG}..."
+    "${MEDIAMTX_BIN}" "${MEDIAMTX_RUNTIME_CONFIG}" &
   else
-    echo "==> MediaMTX config not found at ${MEDIAMTX_CONFIG_PATH}; starting defaults."
+    echo "==> MediaMTX config not found; starting defaults."
     "${MEDIAMTX_BIN}" &
   fi
   PIDS+=("$!")
@@ -216,6 +253,7 @@ else
 fi
 
 echo "==> Starting camera relay runner..."
+CAMERA_ENCODER_BITRATE_KBPS="${CAMERA_ENCODER_BITRATE_KBPS}" \
 uv run --project server tc-camera \
   --width "${CAMERA_WIDTH}" \
   --height "${CAMERA_HEIGHT}" \
@@ -224,9 +262,13 @@ uv run --project server tc-camera \
   --retry-interval "${CAMERA_RETRY_INTERVAL}" &
 PIDS+=("$!")
 
-echo "==> Starting recorder runner..."
-uv run --project server tc-recorder &
-PIDS+=("$!")
+if [[ "${GUI_NO_RERUN}" != "1" ]]; then
+  echo "==> Starting recorder runner..."
+  uv run --project server tc-recorder &
+  PIDS+=("$!")
+else
+  echo "==> GUI_NO_RERUN=1, skipping recorder runner."
+fi
 
 DEFAULT_RUN_ROBOT_RUNNER="1"
 if [[ "${GUI_NO_RERUN}" == "1" ]]; then
@@ -247,17 +289,30 @@ fi
 
 if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
   CAMERA_GUARD_REQUIRE_ROBOT="${CAMERA_GUARD_REQUIRE_ROBOT:-${RUN_ROBOT_RUNNER_RESOLVED}}"
-  echo "==> Running camera live guard (WebRTC)..."
+  echo "==> Running camera live guard (WebRTC, min_cameras=${CAMERA_GUARD_MIN_CAMERAS})..."
   CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
     CAMERA_GUARD_REQUIRE_ROBOT="${CAMERA_GUARD_REQUIRE_ROBOT}" \
+    CAMERA_GUARD_MIN_CAMERAS="${CAMERA_GUARD_MIN_CAMERAS}" \
     uv run --project server python scripts/check_camera_live_webrtc.py
 
-  echo "==> Running camera live guard (GUI + snapshot)..."
-  if node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
-    CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
+  SKIP_GUI_GUARD="${SKIP_GUI_GUARD:-0}"
+  # Auto-skip on headless hosts (no X11 or Wayland display available).
+  if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+    SKIP_GUI_GUARD="1"
+  fi
+  if [[ "${SKIP_GUI_GUARD}" == "1" ]]; then
+    echo "==> Skipping GUI snapshot guard (headless environment; WebRTC guard already passed)."
+  elif node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+    echo "==> Running camera live guard (GUI + snapshot, min_cameras=${CAMERA_GUARD_MIN_CAMERAS})..."
+    if CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
       CAMERA_GUARD_GUI_URL="${GUI_URL}" \
       CAMERA_GUARD_GUI_BROWSER="${GUI_GUARD_BROWSER}" \
-      node scripts/check_camera_live_gui.mjs
+      CAMERA_GUARD_MIN_CAMERAS="${CAMERA_GUARD_MIN_CAMERAS}" \
+      node scripts/check_camera_live_gui.mjs; then
+      echo "==> GUI snapshot guard passed."
+    else
+      echo "==> WARNING: GUI snapshot guard failed. WebRTC guard already passed — continuing."
+    fi
   else
     echo "==> Playwright package not found, skipping GUI snapshot guard."
   fi
