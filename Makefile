@@ -2,8 +2,8 @@
 	setup setup_host setup_remote \
 	install_tools install_uv install_mediamtx \
 	dev dev-cleanup dev-guard dev_host dev_remote dev_remote_cleanup dev_remove \
-	robot client server mediamtx gui camera recorder replay \
-	test test-client test-server \
+	robot client server mediamtx gui camera recorder replay mjpeg \
+	test test-client test-server test-integration \
 	lint clean
 
 LOCAL_BIN ?= $(HOME)/.local/bin
@@ -135,13 +135,19 @@ recorder:
 replay:
 	uv run --project server tc-replay $(ARGS)
 
+mjpeg:
+	uv run --project server python scripts/mjpeg_debug.py
+
 test: test-client test-server
 
 test-client:
 	cd client && npm test
 
 test-server:
-	cd server && uv run pytest ../tests/server -v
+	cd server && uv run --extra dev pytest ../tests/server -v
+
+test-integration:
+	cd client && npx playwright test --config ../tests/integration/playwright.config.ts
 
 lint:
 	@bash scripts/lint.sh
