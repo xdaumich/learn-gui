@@ -45,27 +45,25 @@ def _discover_cameras() -> list[tuple[str, dai.DeviceInfo]]:
     """Discover connected OAK cameras and return (layout_name, device_info) pairs.
 
     Ordering: OAK-D models get center slot priority, matching camera.py logic.
+    Uses DeviceInfo only (no device open) — model name detection happens in
+    _open_devices after opening, which may reorder slots.
     """
     available = dai.Device.getAllAvailableDevices()
     if not available:
         return []
+    # Return raw infos; _open_devices handles ordering after getting model names.
+    return available[:3]
 
-    # Profile devices: (is_oak_d, name, info)
-    profiles: list[tuple[bool, str, dai.DeviceInfo]] = []
-    for info in available:
-        try:
-            name = info.name or info.deviceId
-        except Exception:
-            name = info.deviceId
-        is_oak_d = name.upper().startswith(_OAK_D_PREFIX)
-        profiles.append((is_oak_d, name, info))
 
-    # Sort: OAK-D first (for center priority), then by name
-    profiles.sort(key=lambda p: (not p[0], p[1]))
+def _assign_layout(opened: list[tuple[str, dai.Device]]) -> list[tuple[str, dai.Device]]:
+    """Reorder opened devices so OAK-D gets the center slot.
 
-    # Apply OAK-D center-slot ordering
-    oak_d = [(n, i) for is_d, n, i in profiles if is_d]
-    other = [(n, i) for is_d, n, i in profiles if not is_d]
+    opened: list of (model_name, device) in discovery order.
+    Returns: list of (layout_name, device) with correct slot assignment.
+    """
+    oak_d = [(n, d) for n, d in opened if n.upper().startswith(_OAK_D_PREFIX)]
+    other = [(n, d) for n, d in opened if not n.upper().startswith(_OAK_D_PREFIX)]
+    other.reverse()
 
     if oak_d:
         if len(other) >= 2:
@@ -77,10 +75,9 @@ def _discover_cameras() -> list[tuple[str, dai.DeviceInfo]]:
     else:
         ordered = list(other)
 
-    # Map to layout names (first 3 only)
-    result: list[tuple[str, dai.DeviceInfo]] = []
-    for i, (name, info) in enumerate(ordered[:3]):
-        result.append((LAYOUT[i], info))
+    result: list[tuple[str, dai.Device]] = []
+    for i, (model_name, device) in enumerate(ordered[:3]):
+        result.append((LAYOUT[i], device))
     return result
 
 
@@ -120,30 +117,49 @@ _queues: dict[str, dai.MessageQueue] = {}
 
 
 def _open_devices():
-    """Discover cameras and open DepthAI devices eagerly."""
-    discovered = _discover_cameras()
-    if not discovered:
+    """Discover cameras, open devices, and assign layout slots.
+
+    Opens all devices first to read the real model name (getDeviceName),
+    then assigns layout slots with OAK-D center priority.
+    """
+    infos = _discover_cameras()
+    if not infos:
         logger.warning("No OAK cameras found!")
         return
 
-    for layout_name, device_info in discovered:
-        device = None
+    # Phase 1: open devices and read model names.
+    opened: list[tuple[str, dai.Device]] = []
+    for info in infos:
         try:
-            device = dai.Device(device_info)
+            device = dai.Device(info)
+            model = device.getDeviceName()
+            logger.info("Discovered %s (%s)", model, info.deviceId)
+            opened.append((model, device))
+        except Exception:
+            logger.exception("Failed to open device %s", info.deviceId)
+
+    if not opened:
+        return
+
+    # Phase 2: assign layout slots (OAK-D → center).
+    assigned = _assign_layout(opened)
+
+    # Phase 3: build and start pipelines.
+    for layout_name, device in assigned:
+        try:
             pipeline, queue = _build_mjpeg_pipeline(device)
             pipeline.start()
             _cameras[layout_name] = layout_name
             _devices[layout_name] = device
             _pipelines[layout_name] = pipeline
             _queues[layout_name] = queue
-            logger.info("Opened camera: %s (%s)", layout_name, device_info.deviceId)
+            logger.info("Opened camera: %s (%s)", layout_name, device.getDeviceName())
         except Exception:
-            logger.exception("Failed to open camera %s", layout_name)
-            if device is not None:
-                try:
-                    device.close()
-                except Exception:
-                    pass
+            logger.exception("Failed to start pipeline for %s", layout_name)
+            try:
+                device.close()
+            except Exception:
+                pass
 
 
 def _close_devices():
@@ -219,21 +235,47 @@ async def index():
     if not _cameras:
         return "<html><body><h1>No cameras found</h1></body></html>"
 
-    img_tags = []
-    for name in _cameras:
-        img_tags.append(
-            f'<div style="display:inline-block;margin:8px;text-align:center">'
-            f"<h3>{name}</h3>"
-            f'<img src="/stream/{name}" width="{WIDTH}" height="{HEIGHT}" '
-            f'style="border:1px solid #333" />'
+    names = list(_cameras.keys())
+
+    def _tile(name: str, w: int, h: int) -> str:
+        label = name.capitalize()
+        return (
+            f'<div style="text-align:center">'
+            f'<div style="font-size:13px;color:#888;margin-bottom:4px">{label}</div>'
+            f'<img src="/stream/{name}" width="{w}" height="{h}" '
+            f'style="border:1px solid #333;border-radius:4px" />'
             f"</div>"
+        )
+
+    # Center (OAK-D) on top row, left/right on bottom row
+    top_row = ""
+    bottom_tiles: list[str] = []
+    side_w, side_h = int(WIDTH * 0.75), int(HEIGHT * 0.75)
+
+    for name in names:
+        if name == "center":
+            top_row = (
+                f'<div style="margin-bottom:12px">'
+                f"{_tile(name, WIDTH, HEIGHT)}"
+                f"</div>"
+            )
+        else:
+            bottom_tiles.append(_tile(name, side_w, side_h))
+
+    bottom_row = ""
+    if bottom_tiles:
+        bottom_row = (
+            '<div style="display:flex;justify-content:center;gap:16px">'
+            + "".join(bottom_tiles)
+            + "</div>"
         )
 
     return (
         "<html><head><title>MJPEG Debug</title></head>"
-        '<body style="background:#111;color:#eee;font-family:sans-serif;text-align:center">'
-        "<h1>MJPEG Debug Viewer</h1>"
-        + "".join(img_tags)
+        '<body style="background:#111;color:#eee;font-family:sans-serif;'
+        'text-align:center;padding:16px">'
+        '<h1 style="margin:0 0 16px 0;font-size:20px">MJPEG Debug Viewer</h1>'
+        + top_row + bottom_row
         + "</body></html>"
     )
 
