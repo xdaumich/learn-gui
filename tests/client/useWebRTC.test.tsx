@@ -120,20 +120,20 @@ describe("useWebRTC", () => {
         expect.objectContaining({ signal: expect.anything() }),
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://localhost:8889/left/whep",
+        "http://localhost:8000/webrtc/left/whep",
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/sdp" },
         }),
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://localhost:8889/center/whep",
+        "http://localhost:8000/webrtc/center/whep",
         expect.objectContaining({
           method: "POST",
         }),
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://localhost:8889/right/whep",
+        "http://localhost:8000/webrtc/right/whep",
         expect.objectContaining({
           method: "POST",
         }),

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Smoke-check camera live readiness through the relay WHEP path.
+"""Smoke-check camera live readiness through the aiortc WebRTC path.
 
 This script is intended for `make dev` startup guards. It verifies:
 1) API health is reachable.
 2) Cameras are discoverable through `/webrtc/cameras`.
-3) MediaMTX relay paths are online for each expected camera stream.
 """
 
 from __future__ import annotations
@@ -124,62 +123,6 @@ def _wait_for_camera_names(
     )
 
 
-def _normalize_stream_name(camera_name: str) -> str:
-    return camera_name.lower()
-
-
-def _extract_ready_paths(payload: Any) -> dict[str, bool]:
-    items = payload.get("items") if isinstance(payload, dict) else None
-    if not isinstance(items, list):
-        return {}
-
-    ready_paths: dict[str, bool] = {}
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name")
-        if not isinstance(name, str):
-            continue
-        ready = item.get("ready")
-        if ready is None:
-            ready = item.get("sourceReady")
-        if ready is None:
-            bytes_received = item.get("bytesReceived")
-            if isinstance(bytes_received, (int, float)):
-                ready = bytes_received > 0
-        ready_paths[name.lower()] = bool(ready) if ready is not None else True
-    return ready_paths
-
-
-def _wait_for_relay_paths(
-    paths_url: str,
-    camera_names: list[str],
-    *,
-    timeout_s: float,
-    poll_s: float,
-) -> tuple[list[str], list[str]]:
-    expected_paths = {_normalize_stream_name(name) for name in camera_names}
-    deadline = time.monotonic() + timeout_s
-    last_error: Exception | None = None
-
-    while time.monotonic() < deadline:
-        try:
-            payload = _request_json(paths_url, timeout_s=5.0)
-            ready_paths = _extract_ready_paths(payload)
-            available = [name for name in sorted(expected_paths) if ready_paths.get(name, False)]
-            missing = [name for name in sorted(expected_paths) if name not in available]
-            if not missing:
-                return available, []
-        except Exception as exc:  # pragma: no cover - guarded by integration runtime
-            last_error = exc
-        time.sleep(poll_s)
-
-    missing_all = sorted(expected_paths)
-    if last_error is not None:
-        return [], [f"paths query failed: {last_error}"] + missing_all
-    return [], missing_all
-
-
 def _wait_for_robot_live(
     robot_status_url: str,
     *,
@@ -219,9 +162,6 @@ def _env_int(name: str, default: int) -> int:
 
 def main() -> int:
     base_url = _normalize_base_url(_env_str("CAMERA_GUARD_API_BASE_URL", "http://127.0.0.1:8000"))
-    mediamtx_api_url = _normalize_base_url(
-        _env_str("CAMERA_GUARD_MEDIAMTX_API_URL", "http://127.0.0.1:9997")
-    )
     timeout_s = _env_float("CAMERA_GUARD_TIMEOUT_S", 45.0)
     poll_s = _env_float("CAMERA_GUARD_POLL_S", 0.5)
     require_robot = _env_bool("CAMERA_GUARD_REQUIRE_ROBOT", True)
@@ -230,7 +170,6 @@ def main() -> int:
     health_url = f"{base_url}/health"
     cameras_url = f"{base_url}/webrtc/cameras"
     robot_status_url = f"{base_url}/robot/status"
-    paths_url = f"{mediamtx_api_url}/v3/paths/list"
 
     try:
         _wait_for_health(health_url, timeout_s=timeout_s, poll_s=poll_s)
@@ -241,8 +180,8 @@ def main() -> int:
             min_cameras=min_cameras,
         )
         print(
-            f"[camera-guard:webrtc] Expected cameras: {len(camera_names)} "
-            f"({', '.join(camera_names)}).",
+            f"[camera-guard:webrtc] PASS: "
+            f"{len(camera_names)} camera(s) online ({', '.join(camera_names)}).",
             flush=True,
         )
         if min_cameras > 0 and len(camera_names) < min_cameras:
@@ -253,32 +192,6 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
-        received_labels, missing_or_errors = _wait_for_relay_paths(
-            paths_url,
-            camera_names,
-            timeout_s=timeout_s,
-            poll_s=poll_s,
-        )
-        expected_count = len(camera_names)
-        received_count = len(received_labels)
-        if received_count < expected_count:
-            missing = expected_count - received_count
-            error_details = (
-                f"; relay_details={missing_or_errors}" if missing_or_errors else ""
-            )
-            print(
-                "[camera-guard:webrtc] ERROR: "
-                f"only {received_count}/{expected_count} relay paths became ready "
-                f"(missing={missing}){error_details}",
-                file=sys.stderr,
-            )
-            return 1
-
-        print(
-            "[camera-guard:webrtc] PASS: "
-            f"relay paths ready for {received_count}/{expected_count} streams.",
-            flush=True,
-        )
         if require_robot:
             robot_status = _wait_for_robot_live(
                 robot_status_url,

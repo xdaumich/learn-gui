@@ -14,20 +14,9 @@ ROBOT_STATE_PORT="${ROBOT_STATE_PORT:-5555}"
 ROBOT_HEARTBEAT_PATH="${ROBOT_HEARTBEAT_PATH:-data_logs/.robot_heartbeat.json}"
 RUN_ROBOT_RUNNER="${RUN_ROBOT_RUNNER:-0}"
 DEV_SKIP_PRE_CLEANUP="${DEV_SKIP_PRE_CLEANUP:-0}"
-THOR_IP="${THOR_IP:-}"
 VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://127.0.0.1:${HOST_API_PORT}}"
-VITE_WHEP_BASE_URL="${VITE_WHEP_BASE_URL:-}"
 RERUN_GRPC_URL="${RERUN_GRPC_URL:-rerun+http://127.0.0.1:${HOST_RERUN_GRPC_PORT}/proxy}"
 RERUN_WEB_URL="${RERUN_WEB_URL:-http://localhost:${HOST_RERUN_WEB_PORT}}"
-
-if [[ -z "${VITE_WHEP_BASE_URL}" ]]; then
-  if [[ -z "${THOR_IP}" ]]; then
-    echo "ERROR: THOR_IP is required unless VITE_WHEP_BASE_URL is set explicitly." >&2
-    echo "Example: THOR_IP=192.168.1.50 make dev_host" >&2
-    exit 2
-  fi
-  VITE_WHEP_BASE_URL="http://${THOR_IP}:8889"
-fi
 
 list_listening_pids() {
   local port="$1"
@@ -162,7 +151,6 @@ trap cleanup EXIT SIGINT SIGTERM
 
 echo "==> Host mode enabled."
 echo "==> API base URL: ${VITE_API_BASE_URL}"
-echo "==> WHEP base URL: ${VITE_WHEP_BASE_URL}"
 
 echo "==> Starting GUI API + Rerun viewer on host..."
 uv run --project server tc-gui --no-client --port "${HOST_API_PORT}" &
@@ -172,7 +160,6 @@ echo "==> Starting host frontend (Vite)..."
 (
   cd client
   VITE_API_BASE_URL="${VITE_API_BASE_URL}" \
-  VITE_WHEP_BASE_URL="${VITE_WHEP_BASE_URL}" \
   VITE_RERUN_WEB_ORIGIN="http://localhost:${HOST_RERUN_WEB_PORT}" \
   VITE_RERUN_GRPC_ORIGIN="http://127.0.0.1:${HOST_RERUN_GRPC_PORT}" \
     npm run dev -- --host 0.0.0.0 --port "${HOST_VITE_PORT}" --strictPort

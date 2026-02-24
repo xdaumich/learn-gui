@@ -7,22 +7,24 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from data_log import RecordingManager
 import rerun_bridge
-import webrtc
+from telemetry_console.camera import CAMERA_STREAM_LAYOUT
 from telemetry_console.schemas import RecordingStatus
+from telemetry_console.webrtc_sessions import session_manager
 
 
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
+    session_manager.open_cameras()
     yield
-    webrtc.stop_streaming()
+    await session_manager.close_all_peers()
+    session_manager.close_cameras()
 
 
 app = FastAPI(title="Telemetry Console GUI API", lifespan=_app_lifespan)
@@ -65,65 +67,6 @@ def _recording_status_from_state(state) -> RecordingStatus:
         samples=state.samples,
         state=state.state,
     )
-
-
-def _camera_names_from_mediamtx_paths() -> list[str] | None:
-    """Read active camera stream names from MediaMTX path API.
-
-    Returns stream names in layout order when possible.
-    """
-    paths_api_url = os.environ.get(
-        "MEDIAMTX_PATHS_API_URL",
-        "http://127.0.0.1:9997/v3/paths/list",
-    )
-    timeout_s = float(os.environ.get("MEDIAMTX_PATHS_API_TIMEOUT_S", "0.8"))
-
-    try:
-        with urllib_request.urlopen(paths_api_url, timeout=max(0.1, timeout_s)) as response:
-            raw = response.read().decode("utf-8")
-        payload = json.loads(raw)
-    except (
-        OSError,
-        ValueError,
-        urllib_error.HTTPError,
-        urllib_error.URLError,
-    ):
-        return None
-
-    items = payload.get("items")
-    if not isinstance(items, list):
-        return None
-
-    # Include active tc-camera stream targets so the client can connect all
-    # announced streams even while MediaMTX is still publishing paths.
-    active_stream_names = getattr(webrtc, "list_stream_names", lambda: [])() or []
-    active_names = [
-        name.lower() for name in active_stream_names if isinstance(name, str) and name
-    ]
-
-    # Gather supported stream names from currently known MediaMTX paths.
-    discovered_camera_names: list[str] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        path_name = item.get("name")
-        if not isinstance(path_name, str):
-            continue
-        camera_name = path_name.lower()
-        if camera_name not in ("left", "center", "right"):
-            if not camera_name.startswith("cam_"):
-                continue
-        discovered_camera_names.append(camera_name)
-
-    discovered_set = set(discovered_camera_names) | set(active_names)
-    if not discovered_set:
-        return []
-
-    # Keep deterministic left/center/right ordering when the layout is known.
-    layout_names = list(getattr(webrtc, "CAMERA_STREAM_LAYOUT", ("left", "center", "right")))
-    ordered = [name for name in layout_names if name in discovered_set]
-    extras = sorted(name for name in discovered_set if name not in set(layout_names))
-    return ordered + extras
 
 
 @app.get("/health")
@@ -180,42 +123,17 @@ async def robot_status():
 
 @app.get("/webrtc/cameras")
 async def webrtc_cameras() -> list[str]:
-    # Prefer MediaMTX runtime paths so the GUI only requests streams that are
-    # actually present (important when fewer than CAM_A/CAM_B/CAM_C are plugged in).
-    camera_names = _camera_names_from_mediamtx_paths()
-    if camera_names is not None:
-        return camera_names
+    return [s for s in CAMERA_STREAM_LAYOUT if s in session_manager.slots]
 
-    camera_sockets = getattr(app.state, "camera_sockets", None)
-    if not camera_sockets:
-        stream_names = getattr(webrtc, "list_stream_names", lambda: None)()
-        if stream_names:
-            return stream_names
-        # In split-runner mode, camera relay runs in tc-camera. Avoid probing the
-        # device from GUI API to prevent DepthAI contention and startup stalls.
-        # Return an empty list until relay paths are visible from MediaMTX.
-        return []
 
-    order_camera_sockets = getattr(webrtc, "order_camera_sockets", None)
-    if callable(order_camera_sockets):
-        camera_sockets = order_camera_sockets(camera_sockets)
-    else:
-        camera_sockets = list(camera_sockets)
-
-    socket_to_stream_name = {
-        "CAM_B": "left",
-        "CAM_A": "center",
-        "CAM_C": "right",
-    }
-    stream_names: list[str] = []
-    for socket in camera_sockets:
-        socket_name = str(getattr(socket, "name", socket)).upper()
-        mapped_name = socket_to_stream_name.get(socket_name)
-        if mapped_name is None:
-            stream_names.append(socket_name.lower())
-        else:
-            stream_names.append(mapped_name)
-    return stream_names
+@app.post("/webrtc/{camera}/whep")
+async def webrtc_whep(camera: str, request: Request) -> Response:
+    sdp_offer = (await request.body()).decode()
+    try:
+        sdp_answer = await session_manager.answer(camera, sdp_offer)
+    except KeyError:
+        return Response(status_code=404, content=f"Camera '{camera}' not found")
+    return PlainTextResponse(sdp_answer, status_code=201, media_type="application/sdp")
 
 
 @app.get("/recording/status", response_model=RecordingStatus)

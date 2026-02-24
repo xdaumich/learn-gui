@@ -8,38 +8,15 @@ RERUN_GRPC_PORT="${RERUN_GRPC_PORT:-9876}"
 RERUN_WEB_PORT="${RERUN_WEB_PORT:-9090}"
 RERUN_GRPC_URL="${RERUN_GRPC_URL:-rerun+http://127.0.0.1:${RERUN_GRPC_PORT}/proxy}"
 RERUN_WEB_URL="${RERUN_WEB_URL:-http://localhost:${RERUN_WEB_PORT}}"
-MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-8554}"
-MEDIAMTX_WHEP_PORT="${MEDIAMTX_WHEP_PORT:-8889}"
-MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-9997}"
 ROBOT_STATE_PORT="${ROBOT_STATE_PORT:-5555}"
 RECORDER_STATUS_PORT="${RECORDER_STATUS_PORT:-5556}"
 RECORDER_CONTROL_PORT="${RECORDER_CONTROL_PORT:-5557}"
 ROBOT_HEARTBEAT_PATH="${ROBOT_HEARTBEAT_PATH:-data_logs/.robot_heartbeat.json}"
-MEDIAMTX_CONFIG_PATH="${MEDIAMTX_CONFIG_PATH:-mediamtx.yml}"
-CAMERA_WIDTH="${CAMERA_WIDTH:-640}"
-CAMERA_HEIGHT="${CAMERA_HEIGHT:-480}"
-CAMERA_FPS="${CAMERA_FPS:-15}"
-CAMERA_ENCODER_BITRATE_KBPS="${CAMERA_ENCODER_BITRATE_KBPS:-700}"
-CAMERA_STARTUP_TIMEOUT="${CAMERA_STARTUP_TIMEOUT:-0}"
-CAMERA_RETRY_INTERVAL="${CAMERA_RETRY_INTERVAL:-1.0}"
 GUI_URL="${CAMERA_GUARD_GUI_URL:-http://localhost:${VITE_PORT}}"
 GUI_GUARD_BROWSER="${CAMERA_GUARD_GUI_BROWSER:-chromium}"
 CAMERA_GUARD_MIN_CAMERAS="${CAMERA_GUARD_MIN_CAMERAS:-3}"
 DEV_SKIP_PRE_CLEANUP="${DEV_SKIP_PRE_CLEANUP:-0}"
-WEBRTC_ICE_HOST_IP="${WEBRTC_ICE_HOST_IP:-}"
-MEDIAMTX_BIN="$(command -v mediamtx || true)"
 GUI_NO_RERUN="${GUI_NO_RERUN:-1}"
-
-# On multi-NIC hosts, MediaMTX advertises ICE candidates on all interfaces.
-# Restrict to a single reachable IP so all WebRTC streams use the same route.
-# Set WEBRTC_ICE_HOST_IP explicitly, or auto-detect the default-route interface.
-if [[ -z "${WEBRTC_ICE_HOST_IP}" ]]; then
-  WEBRTC_ICE_HOST_IP="$(
-    ip -4 route get 1.0.0.0 2>/dev/null \
-      | grep -oP 'src \K[0-9.]+' \
-      | head -1
-  )"
-fi
 
 list_listening_pids() {
   local port="$1"
@@ -98,7 +75,7 @@ cleanup_preexisting_ports() {
   local cleaned_any=0
 
   # Stale split-runner processes can survive abnormal shutdowns. Best-effort stop.
-  pkill -f 'tc-gui|tc-camera|tc-recorder|tc-robot|run_robot\.py' >/dev/null 2>&1 || true
+  pkill -f 'tc-gui|tc-recorder|tc-robot|run_robot\.py' >/dev/null 2>&1 || true
 
   for entry in \
     "${VITE_PORT}:Vite" \
@@ -116,21 +93,6 @@ cleanup_preexisting_ports() {
     fi
     kill_port_if_in_use "${port}" "${name}"
   done
-
-  if [[ -n "${MEDIAMTX_BIN}" ]]; then
-    for entry in \
-      "${MEDIAMTX_RTSP_PORT}:MediaMTX RTSP" \
-      "${MEDIAMTX_WHEP_PORT}:MediaMTX WHEP" \
-      "${MEDIAMTX_API_PORT}:MediaMTX API"
-    do
-      local port="${entry%%:*}"
-      local name="${entry#*:}"
-      if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
-        cleaned_any=1
-      fi
-      kill_port_if_in_use "${port}" "${name}"
-    done
-  fi
 
   if [[ "${cleaned_any}" -eq 0 ]]; then
     echo "==> No stale listeners found on dev ports."
@@ -191,11 +153,6 @@ if [[ "${GUI_NO_RERUN}" != "1" ]]; then
   require_free_port "${RECORDER_STATUS_PORT}" "Recorder status ZMQ"
   require_free_port "${RECORDER_CONTROL_PORT}" "Recorder control ZMQ"
 fi
-if [[ -n "${MEDIAMTX_BIN}" ]]; then
-  require_free_port "${MEDIAMTX_RTSP_PORT}" "MediaMTX RTSP"
-  require_free_port "${MEDIAMTX_WHEP_PORT}" "MediaMTX WHEP"
-  require_free_port "${MEDIAMTX_API_PORT}" "MediaMTX API"
-fi
 
 if [[ "${cleanup_only}" == "1" ]]; then
   echo "==> Dev port cleanup complete."
@@ -216,50 +173,6 @@ else
   echo "==> Starting GUI API + Rerun viewer..."
 fi
 uv run --project server tc-gui "${GUI_ARGS[@]}" &
-PIDS+=("$!")
-
-if [[ -n "${MEDIAMTX_BIN}" ]]; then
-  # On multi-NIC hosts, pin WebRTC ICE to a single IP so all streams route
-  # through the same interface. Generate a runtime config with
-  # webrtcICEHostNAT1To1IPs set to the detected IP.
-  MEDIAMTX_RUNTIME_CONFIG="${MEDIAMTX_CONFIG_PATH}"
-  if [[ -n "${WEBRTC_ICE_HOST_IP}" ]]; then
-    echo "==> MediaMTX WebRTC ICE host: ${WEBRTC_ICE_HOST_IP} (UDP mux :8189)"
-    MEDIAMTX_RUNTIME_CONFIG="/tmp/mediamtx-dev-$$.yml"
-    if [[ -f "${MEDIAMTX_CONFIG_PATH}" ]]; then
-      cp "${MEDIAMTX_CONFIG_PATH}" "${MEDIAMTX_RUNTIME_CONFIG}"
-    else
-      : > "${MEDIAMTX_RUNTIME_CONFIG}"
-    fi
-    # v1.16+: disable auto-discovery from all NICs, advertise only the target IP.
-    cat >> "${MEDIAMTX_RUNTIME_CONFIG}" <<EOF
-
-webrtcIPsFromInterfaces: false
-webrtcAdditionalHosts: [${WEBRTC_ICE_HOST_IP}]
-webrtcLocalUDPAddress: ${WEBRTC_ICE_HOST_IP}:8189
-EOF
-  fi
-  if [[ -f "${MEDIAMTX_RUNTIME_CONFIG}" ]]; then
-    echo "==> Starting MediaMTX relay with ${MEDIAMTX_RUNTIME_CONFIG}..."
-    "${MEDIAMTX_BIN}" "${MEDIAMTX_RUNTIME_CONFIG}" &
-  else
-    echo "==> MediaMTX config not found; starting defaults."
-    "${MEDIAMTX_BIN}" &
-  fi
-  PIDS+=("$!")
-else
-  echo "==> MediaMTX not found on PATH; relay mode is unavailable."
-  echo "    Install with: brew install mediamtx"
-fi
-
-echo "==> Starting camera relay runner..."
-CAMERA_ENCODER_BITRATE_KBPS="${CAMERA_ENCODER_BITRATE_KBPS}" \
-uv run --project server tc-camera \
-  --width "${CAMERA_WIDTH}" \
-  --height "${CAMERA_HEIGHT}" \
-  --fps "${CAMERA_FPS}" \
-  --startup-timeout "${CAMERA_STARTUP_TIMEOUT}" \
-  --retry-interval "${CAMERA_RETRY_INTERVAL}" &
 PIDS+=("$!")
 
 if [[ "${GUI_NO_RERUN}" != "1" ]]; then

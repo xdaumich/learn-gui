@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import time
 from unittest.mock import MagicMock, patch
 from typing import Any
 
 import depthai as dai
-import pytest
 from fastapi.testclient import TestClient
 
 from telemetry_console.camera import (
@@ -17,8 +15,6 @@ from telemetry_console.camera import (
     _discover_device_profiles,
     _get_device_profile,
     _resolve_target_streams,
-    list_stream_names,
-    list_stream_targets,
 )
 
 # ---------------------------------------------------------------------------
@@ -247,86 +243,81 @@ class TestThreeDeviceSlotAssignment:
 class TestWebRTCCamerasEndpointThreeDevices:
     """Verify the /webrtc/cameras endpoint returns ["left", "center", "right"]."""
 
-    def test_returns_three_stream_names_from_active_targets(self, monkeypatch: Any) -> None:
-        """When 3 streams are active, /webrtc/cameras must return all three."""
-        import webrtc as webrtc_mod
+    def _populate_slots(self):
+        """Populate session_manager.slots with 3 fake camera slots."""
+        from telemetry_console.webrtc_sessions import session_manager, CameraSlot
+        from telemetry_console.webrtc_track import H264Track
 
-        monkeypatch.setattr(
-            webrtc_mod,
-            "list_stream_names",
-            lambda: ["left", "center", "right"],
-        )
+        for name in ("left", "center", "right"):
+            mock_queue = MagicMock()
+            mock_queue.tryGet.return_value = None
+            session_manager.slots[name] = CameraSlot(
+                name=name,
+                device=MagicMock(),
+                pipeline=MagicMock(),
+                track=H264Track(queue=mock_queue, fps=30),
+            )
 
-        from main import app
+    def _clear_slots(self):
+        from telemetry_console.webrtc_sessions import session_manager
+        session_manager.slots.clear()
 
-        app.state.camera_sockets = None
+    def test_returns_three_stream_names_from_active_targets(self) -> None:
+        """When 3 camera slots are open, /webrtc/cameras must return all three."""
+        from telemetry_console.gui_api import app
 
-        client = TestClient(app)
-        response = client.get("/webrtc/cameras")
+        self._populate_slots()
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            response = client.get("/webrtc/cameras")
 
-        assert response.status_code == 200
-        cameras = response.json()
-        assert cameras == ["left", "center", "right"]
-        assert len(cameras) == 3
+            assert response.status_code == 200
+            cameras = response.json()
+            assert cameras == ["left", "center", "right"]
+            assert len(cameras) == 3
+        finally:
+            self._clear_slots()
 
-    def test_returns_three_names_from_mediamtx(self, monkeypatch: Any) -> None:
-        """When MediaMTX reports 3 paths, endpoint returns them in layout order."""
-        import json
-        from io import BytesIO
-        from telemetry_console import gui_api
+    def test_returns_three_names_in_layout_order(self) -> None:
+        """Slots populated out of order still return layout order."""
+        from telemetry_console.webrtc_sessions import session_manager, CameraSlot
+        from telemetry_console.webrtc_track import H264Track
+        from telemetry_console.gui_api import app
 
-        mediamtx_payload = json.dumps({
-            "items": [
-                {"name": "right", "ready": True},
-                {"name": "left", "ready": True},
-                {"name": "center", "ready": True},
-            ]
-        }).encode()
+        # Add in reverse order
+        for name in ("right", "center", "left"):
+            mock_queue = MagicMock()
+            mock_queue.tryGet.return_value = None
+            session_manager.slots[name] = CameraSlot(
+                name=name,
+                device=MagicMock(),
+                pipeline=MagicMock(),
+                track=H264Track(queue=mock_queue, fps=30),
+            )
 
-        def mock_urlopen(url, **kwargs):
-            resp = MagicMock()
-            resp.read.return_value = mediamtx_payload
-            resp.__enter__ = lambda s: s
-            resp.__exit__ = MagicMock(return_value=False)
-            return resp
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            response = client.get("/webrtc/cameras")
 
-        monkeypatch.setattr(gui_api.urllib_request, "urlopen", mock_urlopen)
+            assert response.status_code == 200
+            cameras = response.json()
+            assert cameras == ["left", "center", "right"]
+        finally:
+            self._clear_slots()
 
-        import webrtc as webrtc_mod
-        monkeypatch.setattr(
-            webrtc_mod,
-            "list_stream_names",
-            lambda: ["left", "center", "right"],
-        )
-
-        from main import app
-
-        client = TestClient(app)
-        response = client.get("/webrtc/cameras")
-
-        assert response.status_code == 200
-        cameras = response.json()
-        assert cameras == ["left", "center", "right"]
-
-    def test_camera_count_is_exactly_three(self, monkeypatch: Any) -> None:
+    def test_camera_count_is_exactly_three(self) -> None:
         """Guard test: exactly 3 cameras, not 2 or less."""
-        import webrtc as webrtc_mod
+        from telemetry_console.gui_api import app
 
-        monkeypatch.setattr(
-            webrtc_mod,
-            "list_stream_names",
-            lambda: ["left", "center", "right"],
-        )
+        self._populate_slots()
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            response = client.get("/webrtc/cameras")
 
-        from main import app
-
-        app.state.camera_sockets = None
-
-        client = TestClient(app)
-        response = client.get("/webrtc/cameras")
-
-        cameras = response.json()
-        assert len(cameras) == 3, f"Expected exactly 3 cameras, got {len(cameras)}: {cameras}"
+            cameras = response.json()
+            assert len(cameras) == 3, f"Expected exactly 3 cameras, got {len(cameras)}: {cameras}"
+        finally:
+            self._clear_slots()
 
 
 # ===================================================================
@@ -420,107 +411,3 @@ class TestEdgeCases:
         assert names == ["left", "center"]
 
 
-# ===================================================================
-# Test 6: CameraRelayPublisher.is_healthy()
-# ===================================================================
-
-dai = pytest.importorskip("depthai")
-
-from telemetry_console.camera import CameraRelayPublisher  # noqa: E402
-
-
-class TestCameraRelayPublisherHealthiness:
-    """Verify CameraRelayPublisher.is_healthy() logic."""
-
-    def _make_publisher(self) -> CameraRelayPublisher:
-        queue = MagicMock(spec=dai.MessageQueue)
-        return CameraRelayPublisher(stream_name="test", queue=queue, fps=30)
-
-    def test_thread_never_started(self) -> None:
-        publisher = self._make_publisher()
-        assert publisher.is_healthy(max_silence_s=5.0) is False
-
-    def test_thread_alive_payload_just_now(self) -> None:
-        publisher = self._make_publisher()
-        with patch.object(publisher, "is_alive", return_value=True):
-            publisher._last_payload_monotonic_s = time.monotonic()
-            assert publisher.is_healthy(max_silence_s=5.0) is True
-
-    def test_thread_alive_payload_10s_ago_threshold_5s(self) -> None:
-        publisher = self._make_publisher()
-        with patch.object(publisher, "is_alive", return_value=True):
-            publisher._last_payload_monotonic_s = time.monotonic() - 10
-            assert publisher.is_healthy(max_silence_s=5.0) is False
-
-    def test_thread_alive_payload_3s_ago_threshold_5s(self) -> None:
-        publisher = self._make_publisher()
-        with patch.object(publisher, "is_alive", return_value=True):
-            publisher._last_payload_monotonic_s = time.monotonic() - 3
-            assert publisher.is_healthy(max_silence_s=5.0) is True
-
-    def test_zero_threshold_clamped(self) -> None:
-        publisher = self._make_publisher()
-        with patch.object(publisher, "is_alive", return_value=True):
-            publisher._last_payload_monotonic_s = time.monotonic()
-            assert publisher.is_healthy(max_silence_s=0.0) is True
-
-
-# ===================================================================
-# Test 7: ensure_streaming partial failure
-# ===================================================================
-
-from telemetry_console.camera import (  # noqa: E402
-    ensure_streaming,
-    _start_stream_for_target,
-)
-
-
-class TestEnsureStreamingPartialFailure:
-    """Verify ensure_streaming returns only successfully started streams."""
-
-    @patch("telemetry_console.camera._resolve_target_streams")
-    @patch("telemetry_console.camera._start_stream_for_target")
-    def test_partial_failure_returns_successful_streams(
-        self,
-        mock_start: Any,
-        mock_resolve: Any,
-        monkeypatch: Any,
-    ) -> None:
-        import telemetry_console.camera as cam_mod
-
-        # Isolate global state
-        monkeypatch.setattr(cam_mod, "_active_publishers", {})
-        monkeypatch.setattr(cam_mod, "_active_pipelines", {})
-        monkeypatch.setattr(cam_mod, "_active_devices", {})
-        monkeypatch.setattr(cam_mod, "_active_stream_targets", [])
-
-        targets = [
-            DeviceStreamTarget(
-                device_info=_fake_device_info(device_id="D1", name="OAK-1"),
-                device_name="OAK-1",
-                device_id="D1",
-                stream_name="left",
-            ),
-            DeviceStreamTarget(
-                device_info=_fake_device_info(device_id="D2", name="OAK-D-W"),
-                device_name="OAK-D-W",
-                device_id="D2",
-                stream_name="center",
-            ),
-            DeviceStreamTarget(
-                device_info=_fake_device_info(device_id="D3", name="OAK-1"),
-                device_name="OAK-1",
-                device_id="D3",
-                stream_name="right",
-            ),
-        ]
-        mock_resolve.return_value = targets
-
-        def side_effect(target, **kwargs):
-            if target.stream_name == "center":
-                raise RuntimeError("center device failed")
-
-        mock_start.side_effect = side_effect
-
-        result = ensure_streaming()
-        assert result == ["left", "right"]
