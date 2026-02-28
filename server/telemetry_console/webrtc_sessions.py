@@ -3,7 +3,13 @@ import os
 from dataclasses import dataclass, field
 
 import depthai as dai
-from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
+from aiortc import (
+    RTCConfiguration,
+    RTCIceServer,
+    RTCPeerConnection,
+    RTCRtpSender,
+    RTCSessionDescription,
+)
 from aiortc.contrib.media import MediaRelay
 
 from telemetry_console.camera import (
@@ -108,6 +114,15 @@ class SessionManager:
         # without frame-stealing (fix #3).
         relayed_track = self._relay.subscribe(slot.track)
         pc.addTrack(relayed_track)
+
+        # Force H.264 codec — without this, aiortc picks VP8 (Chrome's first
+        # preference) and the browser tries to decode our H.264 bytes as VP8.
+        caps = RTCRtpSender.getCapabilities("video")
+        h264_codecs = [c for c in caps.codecs if "h264" in c.mimeType.lower()]
+        for transceiver in pc.getTransceivers():
+            if transceiver.kind == "video" and h264_codecs:
+                transceiver.setCodecPreferences(h264_codecs)
+
         await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp_offer, type="offer"))
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)

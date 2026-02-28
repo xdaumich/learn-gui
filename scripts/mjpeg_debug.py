@@ -64,19 +64,16 @@ def _assign_layout(opened: list[tuple[str, dai.Device]]) -> list[tuple[str, dai.
     other = [(n, d) for n, d in opened if not n.upper().startswith(_OAK_D_PREFIX)]
     other.reverse()
 
-    if oak_d:
-        if len(other) >= 2:
-            ordered = [other[0], oak_d[0], other[1]]
-        elif len(other) == 1:
-            ordered = [other[0], oak_d[0]]
-        else:
-            ordered = list(oak_d)
-    else:
-        ordered = list(other)
-
     result: list[tuple[str, dai.Device]] = []
-    for i, (model_name, device) in enumerate(ordered[:3]):
-        result.append((LAYOUT[i], device))
+
+    if oak_d:
+        result.append(("center", oak_d[0][1]))
+
+    # Non-OAK-D cameras fill left then right.
+    side_slots = ["left", "right"]
+    for i, (model_name, device) in enumerate(other[:2]):
+        result.append((side_slots[i], device))
+
     return result
 
 

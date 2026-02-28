@@ -219,7 +219,9 @@ export function useWebRTC() {
     }
 
     async function connectCamera(cameraName: string): Promise<void> {
-      const pc = new RTCPeerConnection();
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
       const peer: PeerEntry = { id: cameraName, pc };
       peersRef.current = [...peersRef.current, peer];
 

@@ -8,6 +8,43 @@ from aiortc import MediaStreamTrack
 
 VIDEO_TIME_BASE = fractions.Fraction(1, 90000)  # standard RTP clock for video
 
+# SPS profile bytes that match aiortc's default SDP profile-level-id (42e01f).
+# DepthAI's encoder declares a higher level than the actual content needs,
+# which causes Chrome to reject the stream.  Patching the SPS to Constrained
+# Baseline Level 3.1 keeps Chrome's decoder happy while the actual encoded
+# bitstream (640×480 @ 30 fps) is well within Level 3.1 limits.
+_SPS_PROFILE_IDC = 0x42       # Baseline
+_SPS_CONSTRAINT_FLAGS = 0xE0  # constraint_set0..2 = 1 → Constrained Baseline
+_SPS_LEVEL_IDC = 0x1F         # Level 3.1
+
+_NAL_START = b"\x00\x00\x00\x01"
+
+
+def _patch_sps(data: bytes) -> bytes:
+    """Rewrite SPS profile/level bytes so the bitstream matches the SDP.
+
+    Scans *data* for 4-byte Annex-B start codes followed by a SPS NAL
+    (type 7).  For each SPS found, the three bytes immediately after the
+    NAL header (profile_idc, constraint_set_flags, level_idc) are
+    overwritten with values that match aiortc's negotiated
+    profile-level-id.  Non-SPS NALs are left untouched.
+    """
+    buf = bytearray(data)
+    i = 0
+    patched = False
+    while i < len(buf) - 7:
+        if buf[i : i + 4] == _NAL_START:
+            nal_type = buf[i + 4] & 0x1F
+            if nal_type == 7:  # SPS
+                buf[i + 5] = _SPS_PROFILE_IDC
+                buf[i + 6] = _SPS_CONSTRAINT_FLAGS
+                buf[i + 7] = _SPS_LEVEL_IDC
+                patched = True
+            i += 5
+        else:
+            i += 1
+    return bytes(buf) if patched else data
+
 
 class H264Track(MediaStreamTrack):
     """aiortc video track that passes DepthAI H.264 NAL bytes directly as av.Packet.
@@ -52,7 +89,7 @@ class H264Track(MediaStreamTrack):
                     break
                 drained_any = True
                 try:
-                    nal_bytes = bytes(dai_pkt.getData())
+                    nal_bytes = _patch_sps(bytes(dai_pkt.getData()))
                 except Exception:
                     continue
                 if nal_bytes:

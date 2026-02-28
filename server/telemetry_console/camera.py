@@ -221,7 +221,7 @@ def build_h264_pipeline(
     cam_out = cam.requestOutput((width, height), dai.ImgFrame.Type.NV12, fps=fps)
 
     encoder = pipeline.create(dai.node.VideoEncoder)
-    encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H264_MAIN)
+    encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H264_BASELINE)
     try:
         encoder.setKeyframeFrequency(keyframe_interval)
     except Exception:

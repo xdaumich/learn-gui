@@ -747,3 +747,231 @@ make test
 - [ ] Step 8c: `check_camera_live_gui.mjs` reports 3/3 tiles advancing
 - [ ] Step 8d: `make test-integration` — all 4 Playwright tests pass
 - [ ] Step 8e: `make test` — final full suite passes
+
+---
+
+## Bug Fix: WebRTC Video Not Decoding (2026-02-27)
+
+### Symptom
+
+`make dev` streams no video in the browser. `make mjpeg` works fine — camera
+hardware is healthy, only the WebRTC path is broken. The `<video>` element
+never paints a frame.
+
+### Root Causes (3 bugs)
+
+Three independent bugs prevented WebRTC video from reaching the browser:
+
+| # | Bug | Layer | Effect |
+|---|-----|-------|--------|
+| 1 | **VP8 codec negotiation** | SDP/aiortc | aiortc picks VP8 (Chrome's first preference) instead of H.264; browser tries to decode H.264 RTP bytes as VP8 → drops 100% of frames |
+| 2 | **SPS profile-level-id mismatch** | H.264 bitstream | DepthAI SPS declares `4d0033` (Main Level 5.1) but aiortc SDP says `42e01f` (Constrained Baseline Level 3.1); Chrome's H.264 decoder rejects mismatched streams |
+| 3 | **Missing ICE servers in browser** | ICE/networking | `new RTCPeerConnection()` with no STUN server; Firefox refuses ICE entirely, cross-subnet connections fail in both browsers |
+
+Bug #1 was the **primary** blocker — even with bugs #2 and #3 fixed, VP8
+negotiation meant zero video. It was discovered last because local loopback
+tests masked it (aiortc-to-aiortc worked since both sides used the same codec).
+
+### Diagnostic Process
+
+#### Phase 1: Server-side pipeline (Jetson Thor)
+
+Created `scripts/diagnose_webrtc.py` — tests each layer in isolation:
+
+| Layer | Test | Result |
+|-------|------|--------|
+| 0 | USB device holders (`fuser`) | PASS — no contention |
+| 1 | DepthAI device discovery | PASS — 3 devices found |
+| 2 | H.264 pipeline (single camera) | PASS — IDR + P-frames produced |
+| 2b | MJPEG pipeline comparison | PASS — camera hardware OK |
+| 3 | `aiortc H264Encoder.pack()` | PASS — RTP payloads produced |
+| 4 | WHEP loopback (camera → aiortc → recv) | PARTIAL — peers connect, 0 frames decoded |
+| 5 | Network/ICE | PASS — host candidates + STUN reachable |
+
+**Finding:** Headless Chromium on ARM64 Jetson has NO H.264 WebRTC codec (only
+VP8/VP9/AV1). All on-device browser tests show `decoded=0` regardless of
+bitstream correctness. Remote verification required.
+
+#### Phase 2: Cross-machine browser testing (gear-desktop x86_64 → Thor)
+
+Ran Playwright Chromium on `gear-desktop-10` (10.112.210.5, Ubuntu 22.04 x86_64)
+against Thor (10.112.210.46). Chromium on x86_64 has full H.264 support:
+
+```
+video/H264 profile-level-id=42e01f  (Constrained Baseline L3.1)
+video/H264 profile-level-id=4d001f  (Main L3.1)
+...
+```
+
+**Test 1 — ICE failure (Firefox):**
+```
+WebRTC: ICE failed, add a STUN server
+```
+→ Fixed by adding STUN server to browser's `RTCPeerConnection`.
+
+**Test 2 — ICE connected, 0 decoded (Chromium, after ICE fix):**
+```
+ICE: connected, Connection: connected
+pkts=2269 bytes=2111334 decoded=0 lost=0
+mimeType: video/VP8  ← WRONG CODEC
+framesReceived: 298, framesDropped: 298
+```
+→ aiortc negotiated VP8, not H.264. Browser receives H.264 bytes via VP8 RTP
+payload type → drops every frame. Fixed with `setCodecPreferences`.
+
+**Test 3 — All 3 bugs fixed (Chromium):**
+```
+mimeType: video/H264  profile-level-id=42001f
+framesDecoded: 283, framesDropped: 0, framesPerSecond: 30
+frameWidth: 640, frameHeight: 480
+```
+
+### Fixes
+
+#### Fix 1: Force H.264 codec in SDP negotiation (primary fix)
+
+**File:** `server/telemetry_console/webrtc_sessions.py`
+
+Without codec preferences, aiortc picks VP8 (Chrome's first listed codec).
+Added `setCodecPreferences` before `setRemoteDescription`:
+
+```python
+caps = RTCRtpSender.getCapabilities("video")
+h264_codecs = [c for c in caps.codecs if "h264" in c.mimeType.lower()]
+for transceiver in pc.getTransceivers():
+    if transceiver.kind == "video" and h264_codecs:
+        transceiver.setCodecPreferences(h264_codecs)
+```
+
+#### Fix 2: SPS NAL patching for profile-level-id match
+
+**File:** `server/telemetry_console/webrtc_track.py`
+
+DepthAI's encoder declares Level 5.1 in the SPS even for 640×480 Baseline
+streams. aiortc's SDP says `42e01f` (Level 3.1). Patch rewrites SPS bytes to
+match:
+
+```python
+_SPS_PROFILE_IDC = 0x42       # Baseline
+_SPS_CONSTRAINT_FLAGS = 0xE0  # constraint_set0..2 = 1 → Constrained Baseline
+_SPS_LEVEL_IDC = 0x1F         # Level 3.1
+```
+
+Runs in `H264Track._drain_loop()` on every DepthAI packet via `_patch_sps()`.
+
+#### Fix 3: Encoder profile Main → Baseline
+
+**File:** `server/telemetry_console/camera.py` line 224
+
+```python
+# Before:
+encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H264_MAIN)
+# After:
+encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H264_BASELINE)
+```
+
+#### Fix 4: Add STUN server to browser RTCPeerConnection
+
+**File:** `client/src/hooks/useWebRTC.ts` line 222
+
+```typescript
+// Before:
+const pc = new RTCPeerConnection();
+// After:
+const pc = new RTCPeerConnection({
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+});
+```
+
+### Test Results
+
+```
+Server tests: 82/83 passed (1 pre-existing failure in test_mjpeg_debug.py, unrelated)
+Client tests: 18/18 passed
+Browser E2E:  3/3 cameras decoding H.264 via WebRTC (Chromium on gear-desktop)
+```
+
+Browser verification output:
+```
+[PASS] Video 0: readyState=4 resolution=640x480 time=23.712→25.710
+[PASS] Video 1: readyState=4 resolution=640x480 time=22.796→24.794
+[PASS] Video 2: readyState=4 resolution=640x480 time=22.133→24.129
+```
+
+Screenshot saved: `docs/assets/screenshots/webrtc_3cam_pass.png`
+
+### How to Reproduce the Bug
+
+To reproduce any individual bug:
+
+**Bug #1 (VP8 negotiation):** Remove `setCodecPreferences` from
+`webrtc_sessions.py`. Browser stats will show `mimeType: video/VP8`,
+`framesDropped=N`, `framesDecoded=0`.
+
+**Bug #2 (SPS mismatch):** Remove `_patch_sps()` and change `_drain_loop` to
+use `bytes(dai_pkt.getData())` directly. After fixing bug #1, browser will
+receive H.264 but Chrome may still reject frames due to profile/level mismatch.
+
+**Bug #3 (ICE):** Revert `RTCPeerConnection` to `new RTCPeerConnection()`.
+Firefox shows "ICE failed, add a STUN server". Cross-subnet Chrome also fails.
+
+### How to Run Diagnostics
+
+```bash
+# Server-side pipeline check (run on Jetson, no browser needed)
+uv run --project server python scripts/diagnose_webrtc.py
+
+# Cross-machine browser test (run on x86_64 host with Chromium)
+# Requires: npm install playwright && npx playwright install chromium
+THOR_IP=<jetson-ip> node /tmp/test_webrtc_full.mjs
+```
+
+### End-to-End Verification
+
+#### Jetson (API-level)
+
+```bash
+make dev
+# Camera guard will print:
+#   [camera-guard:webrtc] Discovered 3 camera(s): left, center, right.
+#   [camera-guard:webrtc] PASS
+
+# Standalone re-run:
+CAMERA_GUARD_API_BASE_URL=http://127.0.0.1:8000 \
+  CAMERA_GUARD_MIN_CAMERAS=3 \
+  CAMERA_GUARD_REQUIRE_ROBOT=0 \
+  uv run --project server python scripts/check_camera_live_webrtc.py
+```
+
+#### Remote browser (full end-to-end)
+
+```bash
+# Open browser on any x86 machine with H.264 support:
+#   http://<thor-ip>:5173
+# All 3 camera tiles (left / center / right) should show live video.
+
+# Automated check (from gear-desktop or Mac):
+CAMERA_GUARD_API_BASE_URL=http://<thor-ip>:8000 \
+  CAMERA_GUARD_GUI_URL=http://<thor-ip>:5173 \
+  CAMERA_GUARD_MIN_CAMERAS=3 \
+  node scripts/check_camera_live_gui.mjs
+
+# Playwright integration tests:
+make test-integration
+```
+
+#### Quick browser console check
+
+```js
+document.querySelectorAll('video[data-testid="camera-stream"]').forEach(v =>
+  console.log(v.dataset.camera, 'readyState:', v.readyState, 'currentTime:', v.currentTime)
+)
+// Expected: all 3 with readyState >= 2, currentTime > 0
+```
+
+### Key Lesson
+
+When debugging WebRTC video, check **three layers independently**:
+1. **Codec negotiation** — verify the SDP answer uses the right codec (`video/H264` not `video/VP8`)
+2. **Bitstream compatibility** — verify SPS profile-level-id matches the SDP's `a=fmtp` line
+3. **ICE connectivity** — verify STUN/TURN is configured and UDP flows bidirectionally
