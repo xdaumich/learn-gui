@@ -2,7 +2,7 @@
 	setup setup_host setup_remote external \
 	install_tools install_uv \
 	dev dev-cleanup dev-guard dev_host dev_remote dev_remote_cleanup dev_remove \
-	robot client server gui recorder replay mjpeg \
+	robot client server gui recorder replay mjpeg mjpeg_elp \
 	test test-client test-server test-integration \
 	lint clean
 
@@ -86,6 +86,9 @@ replay:
 
 mjpeg:
 	uv run --project server python scripts/mjpeg_debug.py
+
+mjpeg_elp:
+	uv run --project server python scripts/mjpeg_elp.py
 
 test: test-client test-server
 
