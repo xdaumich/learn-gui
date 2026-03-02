@@ -8,22 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development workflow
 
-Two-machine setup: **Jetson Thor** runs all backend services, **Mac host** views the web GUI.
+**Jetson Thor** runs everything (`make dev`). Any machine on the network views the GUI by opening a browser to `http://<thor-ip>:5173`. No code runs on the viewer machine.
 
-| Machine | Role | Runs |
-|---------|------|------|
-| Jetson Thor | Code, cameras, backend | `make dev_remote` (MediaMTX + tc-camera), `make dev` for full stack |
-| Mac host | Web GUI viewer | Browser pointed at Thor's IP |
+**Networking:** The browser must reach Thor directly by IP (not SSH port-forwarding) for WebRTC video to work. RTP media flows over UDP on dynamically negotiated ports — TCP-only SSH tunnels block this. If on different subnets, use Tailscale or WireGuard.
 
-**Networking:** The browser on Mac must reach Thor directly by IP (not SSH port-forwarding) for WebRTC video to work. WHEP signaling is HTTP, but the actual RTP media flows over UDP on dynamically negotiated ports. TCP-only SSH tunnels block this.
-
-Set client env vars to Thor's LAN IP:
-```
-VITE_API_BASE_URL=http://<thor-ip>:8000
-VITE_WHEP_BASE_URL=http://<thor-ip>:8889
-```
-
-If Mac and Thor are on different subnets, use Tailscale or WireGuard for a routed IP with full UDP support.
+URL auto-detection: the frontend derives API/Rerun URLs from `window.location.hostname`, so no env vars are needed. Override with `VITE_API_BASE_URL` if necessary.
 
 ## Commands
 
@@ -31,37 +20,32 @@ If Mac and Thor are on different subnets, use Tailscale or WireGuard for a route
 
 ```bash
 make setup           # install all deps (npm + uv)
-make setup_host      # host-only: client + server deps
-make setup_remote    # Thor-only: server + mediamtx check
 make external        # clone external reference repos (git submodules)
 ```
 
 ### Development
 
 ```bash
-make dev             # full local stack (cleanup → all runners + camera guard)
+make dev             # full stack (cleanup → Vite + FastAPI + camera guard)
 SKIP_CAMERA_GUARD=1 make dev    # skip camera guard (no cameras attached)
-make dev_host        # host stack: tc-gui + Vite + optional tc-robot
-make dev_remote      # Thor stack: mediamtx + tc-camera
 make dev-cleanup     # kill stale listeners on ports 5173/8000/9876/9090
 ```
 
 ### Individual runners
 
 ```bash
-make gui             # tc-gui (FastAPI on :8000)
-make camera          # tc-camera (DepthAI relay)
+make gui             # tc-gui (FastAPI on :8000, opens cameras via aiortc)
 make recorder        # tc-recorder (Zarr recording service)
 make replay ARGS="data_logs/<run_id>/<camera>.zarr"
 make robot           # standalone robot demo loop + Rerun
 make client          # Vite dev server (:5173)
-make mediamtx        # MediaMTX relay (:8554 RTSP, :8889 WHEP)
+make mjpeg           # MJPEG debug server for OAK cameras (:8001)
+make mjpeg_elp       # MJPEG debug server for ELP cameras (:8002)
 ```
 
 Running Python scripts directly:
 ```bash
 uv run --project server python scripts/<script>.py
-uv run --project server python scripts/run_camera.py   # local OAK camera window
 ```
 
 ### Testing
@@ -95,30 +79,28 @@ make lint            # ruff (Python) + tsc (TypeScript)
 
 ### Runtime model
 
-`make dev` starts seven concurrent processes:
+`make dev` starts these concurrent processes:
 
 | Process | Command | Port |
 |---------|---------|------|
-| `tc-gui` | FastAPI server | 8000 |
-| `tc-camera` | DepthAI → MediaMTX relay | — |
-| `tc-recorder` | Zarr recording service | ZMQ 5557 |
+| `tc-gui` | FastAPI server + aiortc WebRTC | 8000 |
+| `tc-recorder` | Zarr recording service (optional) | ZMQ 5557 |
 | `tc-robot` | Synthetic robot env (optional) | ZMQ 5555 |
-| MediaMTX | RTSP/WHEP relay | 8554, 8889 |
-| Rerun | gRPC + Web viewer | 9876, 9090 |
+| Rerun | gRPC + Web viewer (optional) | 9876, 9090 |
 | Vite | React frontend | 5173 |
 
-Processes communicate via ZMQ (robot state, recorder control) and MediaMTX (video relay). The FastAPI layer (`tc-gui`) is thin — it proxies requests to subprocess-based services.
+Processes communicate via ZMQ (robot state, recorder control). FastAPI (`tc-gui`) handles cameras directly via DepthAI + aiortc — no MediaMTX needed.
 
 ### Video pipeline
 
 ```
 OAK-D camera
-  → tc-camera (DepthAI, H.264 hardware encode)
-  → MediaMTX (RTSP ingest :8554)
-  → Browser (WHEP pull :8889 via RTCPeerConnection)
+  → DepthAI H.264 hardware encode
+  → aiortc H264Track (in FastAPI process)
+  → Browser (WebRTC via RTCPeerConnection)
 ```
 
-The browser fetches camera names from `GET /webrtc/cameras` (which queries MediaMTX API at `:9997`), then does WHEP signaling: POST SDP offer to `/whep/<camera>/whep`, receive SDP answer, attach video track. This logic lives in [client/src/hooks/useWebRTC.ts](client/src/hooks/useWebRTC.ts).
+The browser fetches camera names from `GET /webrtc/cameras`, then does WHEP-style signaling: POST SDP offer to `/webrtc/<camera>/whep`, receive SDP answer, attach video track. All signaling goes through FastAPI (aiortc). This logic lives in [client/src/hooks/useWebRTC.ts](client/src/hooks/useWebRTC.ts).
 
 Camera socket ordering in [server/telemetry_console/camera.py](server/telemetry_console/camera.py): `CAM_B=left`, `CAM_A=center`, `CAM_C=right`. OAK-D (RGB-preferred) model gets center slot priority.
 
@@ -144,7 +126,9 @@ Keyboard shortcuts: `Z` (Zen↔Compact), `F`/`2` (Focus Rerun), `1` (Focus Camer
 | [server/telemetry_console/viewer.py](server/telemetry_console/viewer.py) | Rerun server lifecycle + URDF + blueprints |
 | [server/telemetry_console/env.py](server/telemetry_console/env.py) | Gym-like RobotEnv + ZMQ PUB |
 | [server/telemetry_console/zmq_channels.py](server/telemetry_console/zmq_channels.py) | ZMQ port constants + msgpack serialization |
-| [server/telemetry_console/cli.py](server/telemetry_console/cli.py) | Entry points (`tc-gui`, `tc-camera`, etc.) |
+| [server/telemetry_console/webrtc_sessions.py](server/telemetry_console/webrtc_sessions.py) | aiortc WebRTC session manager |
+| [server/telemetry_console/webrtc_track.py](server/telemetry_console/webrtc_track.py) | H.264 track for aiortc |
+| [server/telemetry_console/cli.py](server/telemetry_console/cli.py) | Entry points (`tc-gui`, `tc-robot`, etc.) |
 
 ### ZMQ IPC
 
@@ -165,14 +149,10 @@ Serialization: msgpack (binary).
 
 ## Configuration
 
-Copy and edit the relevant env file before running:
-- `.env.example` → `.env` (local dev)
-- `.env.host.example` → `.env.host` (host PC with remote Thor)
-- `.env.remote.example` → `.env.remote` (Jetson Thor)
+Copy `.env.example` → `.env` and edit as needed. Most defaults work out of the box.
 
-Key client env vars (prefix with `VITE_` for Vite exposure):
-- `VITE_API_BASE_URL` — FastAPI server (default `http://localhost:8000`)
-- `VITE_WHEP_BASE_URL` — MediaMTX WHEP base (default `http://localhost:8889`)
+The frontend auto-derives backend URLs from the browser's `window.location.hostname` — no client env vars needed. To override:
+- `VITE_API_BASE_URL` — FastAPI server (auto-detected from browser hostname, port 8000)
 
 ## Plan tracking
 

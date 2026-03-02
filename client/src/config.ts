@@ -13,8 +13,16 @@ function envNumber(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+/** Derive a default origin from the current browser hostname + given port. */
+function defaultOrigin(port: number): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:${port}`;
+  }
+  return `http://localhost:${port}`;
+}
+
 export const API_BASE_URL = trimTrailingSlash(
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000",
+  import.meta.env.VITE_API_BASE_URL ?? defaultOrigin(8000),
 );
 
 export const CAMERA_LIVE_GRACE_MS = envNumber(import.meta.env.VITE_CAMERA_LIVE_GRACE_MS, 4000);
@@ -32,10 +40,10 @@ export const TOPBAR_HOVER_DELAY_MS = envNumber(import.meta.env.VITE_TOPBAR_HOVER
 export const RERUN_WEB_PORT = envNumber(import.meta.env.VITE_RERUN_WEB_PORT, 9090);
 export const RERUN_GRPC_PORT = envNumber(import.meta.env.VITE_RERUN_GRPC_PORT, 9876);
 export const RERUN_WEB_ORIGIN = trimTrailingSlash(
-  import.meta.env.VITE_RERUN_WEB_ORIGIN ?? `http://localhost:${RERUN_WEB_PORT}`,
+  import.meta.env.VITE_RERUN_WEB_ORIGIN ?? defaultOrigin(RERUN_WEB_PORT),
 );
 export const RERUN_GRPC_ORIGIN = trimTrailingSlash(
-  import.meta.env.VITE_RERUN_GRPC_ORIGIN ?? `http://localhost:${RERUN_GRPC_PORT}`,
+  import.meta.env.VITE_RERUN_GRPC_ORIGIN ?? defaultOrigin(RERUN_GRPC_PORT),
 );
 
 export const RERUN_WEB_URL = `${RERUN_WEB_ORIGIN}?url=${encodeURIComponent(

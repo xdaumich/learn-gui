@@ -1,7 +1,7 @@
 .PHONY: \
-	setup setup_host setup_remote external \
+	setup external \
 	install_tools install_uv \
-	dev dev-cleanup dev-guard dev_host dev_remote dev_remote_cleanup dev_remove \
+	dev dev-cleanup dev-guard \
 	robot client server gui recorder replay mjpeg mjpeg_elp \
 	test test-client test-server test-integration \
 	lint clean
@@ -13,13 +13,6 @@ export PATH
 
 setup: install_tools
 	@bash scripts/setup.sh
-
-setup_host: install_tools
-	@cd client && npm install
-	@cd server && uv sync
-
-setup_remote: install_tools
-	@bash scripts/setup_remote.sh
 
 external:
 	@echo "==> Cloning external reference repos (submodules)..."
@@ -49,17 +42,6 @@ dev: dev-cleanup
 
 dev-cleanup:
 	@bash scripts/dev.sh --cleanup-only
-
-dev_host:
-	@bash scripts/dev_host.sh
-
-dev_remote:
-	@bash scripts/dev_remote.sh
-
-dev_remove: dev_remote
-
-dev_remote_cleanup:
-	@bash scripts/dev_remote.sh --cleanup-only
 
 dev-guard:
 	uv run --project server python scripts/check_camera_live_webrtc.py && \
