@@ -1,5 +1,7 @@
 import asyncio
+import logging
 import os
+import time
 from dataclasses import dataclass, field
 
 import depthai as dai
@@ -17,12 +19,29 @@ from telemetry_console.camera import (
     DEFAULT_HEIGHT,
     DEFAULT_WIDTH,
     DEFAULT_KEYFRAME_INTERVAL,
+    DeviceStreamTarget,
     _build_h264_pipeline,
     _discover_device_profiles,
     _resolve_target_streams,
     CAMERA_STREAM_LAYOUT,
 )
 from telemetry_console.webrtc_track import H264Track
+
+
+def _resolve_existing_target(slot: "CameraSlot") -> DeviceStreamTarget:
+    """Build a DeviceStreamTarget from an already-open slot so discovery skips it."""
+    device_id = ""
+    try:
+        info = slot.device.getDeviceInfo()
+        device_id = str(getattr(info, "deviceId", "") or getattr(info, "getMxId", lambda: "")())
+    except Exception:
+        pass
+    return DeviceStreamTarget(
+        stream_name=slot.name,
+        device_info=slot.device.getDeviceInfo() if hasattr(slot.device, "getDeviceInfo") else None,  # type: ignore[arg-type]
+        device_name="",
+        device_id=device_id or "open",
+    )
 
 
 @dataclass
@@ -49,26 +68,61 @@ class SessionManager:
         height: int = DEFAULT_HEIGHT,
         fps: int = DEFAULT_FPS,
         keyframe_interval: int = DEFAULT_KEYFRAME_INTERVAL,
+        min_cameras: int = 0,
+        retry_interval_s: float = 2.0,
+        timeout_s: float = 30.0,
     ) -> list[str]:
-        """Discover and open all available OAK cameras. Returns slot names started."""
-        targets = _resolve_target_streams(None)
-        for target in targets:
-            if target.stream_name in self.slots:
-                continue  # already open
-            device = dai.Device(target.device_info)
-            pipeline, queue = _build_h264_pipeline(
-                device=device, width=width, height=height,
-                fps=fps, keyframe_interval=keyframe_interval,
+        """Discover and open all available OAK cameras.
+
+        When *min_cameras* > 0, retries discovery until at least that many
+        cameras are open or *timeout_s* elapses.  Devices that were stuck in
+        BOOTED state from a previous crash become UNBOOTED after the OS
+        recycles the USB handle (typically a few seconds).
+        """
+        log = logging.getLogger("tc.sessions")
+        deadline = time.monotonic() + max(0.1, timeout_s) if min_cameras > 0 else 0.0
+
+        while True:
+            existing_targets = [
+                _resolve_existing_target(slot) for slot in self.slots.values()
+            ]
+            targets = _resolve_target_streams(None, existing_targets=existing_targets)
+            for target in targets:
+                if target.stream_name in self.slots:
+                    continue
+                try:
+                    device = dai.Device(target.device_info)
+                    pipeline, queue = _build_h264_pipeline(
+                        device=device, width=width, height=height,
+                        fps=fps, keyframe_interval=keyframe_interval,
+                    )
+                    pipeline.start()
+                except Exception as exc:
+                    log.warning("Failed to open %s: %s", target.stream_name, exc)
+                    continue
+                track = H264Track(queue=queue, fps=fps)
+                self.slots[target.stream_name] = CameraSlot(
+                    name=target.stream_name,
+                    device=device,
+                    pipeline=pipeline,
+                    track=track,
+                )
+                log.info("Opened camera: %s", target.stream_name)
+
+            opened = [s for s in CAMERA_STREAM_LAYOUT if s in self.slots]
+            if len(opened) >= min_cameras or time.monotonic() >= deadline:
+                if min_cameras > 0:
+                    log.info(
+                        "Camera discovery done: %d/%d (%s)",
+                        len(opened), min_cameras, ", ".join(opened) or "none",
+                    )
+                return opened
+
+            log.info(
+                "Found %d/%d cameras (%s), retrying in %.0fs...",
+                len(opened), min_cameras, ", ".join(opened) or "none", retry_interval_s,
             )
-            pipeline.start()
-            track = H264Track(queue=queue, fps=fps)
-            self.slots[target.stream_name] = CameraSlot(
-                name=target.stream_name,
-                device=device,
-                pipeline=pipeline,
-                track=track,
-            )
-        return [s for s in CAMERA_STREAM_LAYOUT if s in self.slots]
+            time.sleep(retry_interval_s)
 
     def close_cameras(self) -> None:
         for slot in self.slots.values():

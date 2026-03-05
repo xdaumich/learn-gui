@@ -9,11 +9,11 @@ from typing import Optional, Sequence
 
 import depthai as dai
 
-DEFAULT_WIDTH = 640
-DEFAULT_HEIGHT = 480
+DEFAULT_WIDTH = 1280
+DEFAULT_HEIGHT = 800
 DEFAULT_FPS = 30
 DEFAULT_KEYFRAME_INTERVAL = 30
-DEFAULT_ENCODER_BITRATE_KBPS = 700
+DEFAULT_ENCODER_BITRATE_KBPS = 4000
 
 # Order used for the 3-stream layout in UI.
 CAMERA_STREAM_LAYOUT = ("left", "center", "right")

@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { useWebRTC } from "../hooks/useWebRTC";
-import { useLayout } from "../contexts/LayoutContext";
-import CompactHeader from "./CompactHeader";
 
-const CAMERA_PANEL_PLACEHOLDER_METRICS: [string, string, string] = ["--:--:--", "-- fps", "-- ms"];
 const STALLED_STREAM_RECOVERY_COOLDOWN_MS = 30_000;
 const STALLED_STREAM_RECONNECT_DELAY_MS = 800;
 
 export default function VideoPanel() {
-  const { isZen } = useLayout();
   const {
     streams,
     connectionState,
@@ -104,7 +100,7 @@ export default function VideoPanel() {
     };
   }, []);
 
-  const streamOrder = useMemo(() => ["left", "center", "right"], []);
+  const streamOrder = useMemo(() => ["center", "left", "right"], []);
   const orderedStreams = useMemo(
     () =>
       [...streams].sort((left, right) => {
@@ -114,36 +110,48 @@ export default function VideoPanel() {
       }),
     [streams, streamOrder],
   );
-  const tiles = useMemo(
+  const heroTile = useMemo(() => {
+    const entry = orderedStreams.find((e) => (e.name ?? "").toLowerCase() === "center");
+    if (!entry) return null;
+    const slot = entry.name ?? "";
+    const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
+    return (
+      <VideoTile
+        key={slot || entry.id}
+        stream={entry.stream}
+        cameraName={slot}
+        label={label}
+        monitorEnabled={connectionState === "connected"}
+        onStalled={recoverStalledStream}
+        variant="hero"
+      />
+    );
+  }, [connectionState, orderedStreams, recoverStalledStream]);
+
+  const wristTiles = useMemo(
     () =>
-      orderedStreams.map((entry) => {
-        const slot = entry.name ?? "";
-        const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
-        return (
-          <VideoTile
-            key={slot || entry.id}
-            stream={entry.stream}
-            cameraName={slot}
-            label={label}
-            monitorEnabled={connectionState === "connected"}
-            onStalled={recoverStalledStream}
-          />
-        );
-      }),
+      orderedStreams
+        .filter((e) => (e.name ?? "").toLowerCase() !== "center")
+        .map((entry) => {
+          const slot = entry.name ?? "";
+          const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
+          return (
+            <VideoTile
+              key={slot || entry.id}
+              stream={entry.stream}
+              cameraName={slot}
+              label={label}
+              monitorEnabled={connectionState === "connected"}
+              onStalled={recoverStalledStream}
+              variant="wrist"
+            />
+          );
+        }),
     [connectionState, orderedStreams, recoverStalledStream],
   );
 
   return (
-    <section className={`video-panel ${isZen ? "panel--zen" : "panel"}`}>
-      {!isZen && (
-        <CompactHeader
-          chip="CAM"
-          label="H264"
-          metrics={CAMERA_PANEL_PLACEHOLDER_METRICS}
-          focusTarget="camera"
-          focusKey="1"
-        />
-      )}
+    <section className="video-panel">
       <div className={`media-placeholder ${hasStreams ? "has-video" : ""}`}>
         {cameraGuardMessage && (
           <div className="stream-error" role="alert">
@@ -152,7 +160,12 @@ export default function VideoPanel() {
         )}
         {hasStreams ? (
           <>
-            <div className="camera-grid">{tiles}</div>
+            <div className="camera-grid">
+              {heroTile}
+              <div className="camera-grid__bottom">
+                {wristTiles}
+              </div>
+            </div>
             <div className="stream-status">{statusText}</div>
           </>
         ) : (
@@ -172,9 +185,10 @@ type VideoTileProps = {
   label: string;
   monitorEnabled: boolean;
   onStalled: (cameraName: string) => void;
+  variant?: "hero" | "wrist";
 };
 
-function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled }: VideoTileProps) {
+function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled, variant }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -260,7 +274,7 @@ function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled }: Vid
   }, [cameraName, label, monitorEnabled, onStalled, stream]);
 
   return (
-    <div className="camera-tile">
+    <div className={`camera-tile ${variant === "hero" ? "camera-tile--hero" : "camera-tile--wrist"}`} data-camera={cameraName}>
       <video
         ref={videoRef}
         className="video-stream"

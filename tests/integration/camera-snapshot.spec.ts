@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const VIDEO_SELECTOR = "[data-testid='camera-stream']";
-const EXPECTED_LABELS = ["Left", "Center", "Right"];
+const EXPECTED_LABELS = ["Center", "Left", "Right"];
 
 test("renders three live camera tiles", async ({ page }) => {
   await page.goto("/");

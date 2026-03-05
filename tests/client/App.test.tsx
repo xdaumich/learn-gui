@@ -1,27 +1,12 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 import App from "../../client/src/App";
 
 describe("App layout", () => {
-  test("starts in zen mode and shows controls in compact mode", () => {
+  test("renders camera-only layout with video stream placeholder", () => {
     render(<App />);
 
-    // Zen mode: recording control exists in DOM (topbar rendered but off-screen)
-    expect(
-      screen.getByRole("button", { name: /rec/i }),
-    ).toBeInTheDocument();
-
-    // Content placeholders visible in zen
+    // Content placeholder visible (no cameras connected in test)
     expect(screen.getByText(/video stream/i)).toBeInTheDocument();
-
-    // Floating dot visible in zen mode
-    expect(screen.getByTitle(/click or press z/i)).toBeInTheDocument();
-
-    // Switch to compact mode via Z key
-    fireEvent.keyDown(window, { key: "z" });
-
-    // Compact mode: panel header chips visible
-    expect(screen.getByText("CAM")).toBeInTheDocument();
-    expect(screen.getByText("RERUN")).toBeInTheDocument();
   });
 });

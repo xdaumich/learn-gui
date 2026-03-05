@@ -4,8 +4,8 @@
 
 def test_camera_constants():
     from telemetry_console.camera import DEFAULT_WIDTH, DEFAULT_HEIGHT, DEFAULT_FPS
-    assert DEFAULT_WIDTH == 640
-    assert DEFAULT_HEIGHT == 480
+    assert DEFAULT_WIDTH == 1280
+    assert DEFAULT_HEIGHT == 800
     assert DEFAULT_FPS == 30
 
 

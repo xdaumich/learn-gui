@@ -1,7 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { LayoutProvider } from "../../client/src/contexts/LayoutContext";
 import VideoPanel from "../../client/src/components/VideoPanel";
 
 // ---------------------------------------------------------------------------
@@ -40,11 +39,7 @@ vi.mock("../../client/src/hooks/useWebRTC", () => ({
 function renderSingleTile(stream?: MediaStream) {
   const s = stream ?? fakeStream();
   webRtcState.streams = [{ id: "left:s1", name: "left", stream: s }];
-  render(
-    <LayoutProvider>
-      <VideoPanel />
-    </LayoutProvider>,
-  );
+  render(<VideoPanel />);
 }
 
 /** Get the first video element. */

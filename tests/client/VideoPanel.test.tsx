@@ -1,7 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { LayoutProvider } from "../../client/src/contexts/LayoutContext";
 import VideoPanel from "../../client/src/components/VideoPanel";
 
 function fakeStream(): MediaStream {
@@ -60,11 +59,7 @@ describe("VideoPanel", () => {
       { id: "right:stream-3", name: "right", stream: fakeStream() },
     ];
 
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(connectMock).toHaveBeenCalledTimes(1);
@@ -85,11 +80,7 @@ describe("VideoPanel", () => {
     webRtcState.expectedCameraCount = 3;
     webRtcState.streams = [{ id: "left:stream-1", name: "left", stream: fakeStream() }];
 
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(connectMock).toHaveBeenCalled();
@@ -109,11 +100,7 @@ describe("VideoPanel", () => {
       { id: "right:stream-3", name: "right", stream: fakeStream() },
     ];
 
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(connectMock).toHaveBeenCalled();
@@ -133,11 +120,7 @@ describe("VideoPanel", () => {
     ];
     webRtcState.streams = streams;
 
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(connectMock).toHaveBeenCalled();
@@ -159,11 +142,7 @@ describe("VideoPanel", () => {
       .spyOn(HTMLVideoElement.prototype, "play")
       .mockResolvedValue(undefined);
 
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(screen.getAllByTestId("camera-stream")).toHaveLength(3);
@@ -174,11 +153,7 @@ describe("VideoPanel", () => {
   });
 
   test("each video stream has a live-state video track", async () => {
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(connectMock).toHaveBeenCalled();
@@ -197,18 +172,14 @@ describe("VideoPanel", () => {
     }
   });
 
-  test("video tiles display ordered labels left/center/right", async () => {
+  test("video tiles display ordered labels center/left/right", async () => {
     webRtcState.streams = [
       { id: "right:s3", name: "right", stream: fakeStream() },
       { id: "left:s1", name: "left", stream: fakeStream() },
       { id: "center:s2", name: "center", stream: fakeStream() },
     ];
 
-    render(
-      <LayoutProvider>
-        <VideoPanel />
-      </LayoutProvider>,
-    );
+    render(<VideoPanel />);
 
     await waitFor(() => {
       expect(screen.getAllByTestId("camera-stream")).toHaveLength(3);
@@ -218,6 +189,6 @@ describe("VideoPanel", () => {
       const tile = video.closest(".camera-tile");
       return tile?.querySelector(".camera-label")?.textContent;
     });
-    expect(labels).toEqual(["Left", "Center", "Right"]);
+    expect(labels).toEqual(["Center", "Left", "Right"]);
   });
 });

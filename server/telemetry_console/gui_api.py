@@ -21,7 +21,8 @@ from telemetry_console.webrtc_sessions import session_manager
 
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI):
-    session_manager.open_cameras()
+    min_cameras = int(os.environ.get("MIN_CAMERAS", "3"))
+    session_manager.open_cameras(min_cameras=min_cameras)
     yield
     await session_manager.close_all_peers()
     session_manager.close_cameras()
