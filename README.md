@@ -1,213 +1,180 @@
 # Telemetry Console
 
-WebRTC camera viewer + Rerun trajectory viewer with synchronized timeline.
+WebRTC camera viewer (OAK-D cameras) + Rerun 3D/2D visualization with synchronized timeline. Designed for monitoring robot arms in real time.
 
 ## Repo layout
 
 ```
 client/                    React + Vite frontend
 server/
-  telemetry_console/       Split SDK/runtime modules (viewer, camera, env, recorder, replay, GUI API, CLI)
-  main.py                  Backward-compat API entry point (delegates to telemetry_console.gui_api)
+  telemetry_console/       Python modules (camera, WebRTC, recorder, replay, viewer, API, CLI)
 tests/                     All tests (client + server)
+scripts/                   Dev and utility scripts
 external/                  Reference repos (git submodules, not used at runtime)
-scripts/                   Dev scripts (setup, dev, lint)
 ```
 
 ## Quick start
 
-```bash
-make setup       # install all deps (npm + uv)
-make dev         # clean stale ports, start split runners, run camera guards
-make test        # run all tests
-make external    # clone external reference repos (git submodules, optional)
-```
-
-## Usage (Thor camera + host UI)
-
-Use this profile when OAK cameras are connected to Jetson Thor and the app runs on a host PC.
-
-### 1) First-time setup
-
-On Thor:
+**Jetson Thor** runs everything. Any machine on the network views the GUI by opening a browser to `http://<thor-ip>:5173`. No code runs on the viewer machine.
 
 ```bash
-cd /Users/xda/Projects/learn-gui
-cp .env.remote.example .env.remote
-set -a; source .env.remote; set +a
-make setup_remote
+make setup           # install all deps (npm + uv + udev rules)
+make find_cameras    # discover OAK cameras (model, device ID, USB speed)
+# Edit cameras.json to map device IDs to left/center/right slots
+make dev             # start full stack (Vite + FastAPI + camera guard)
 ```
 
-On host:
+### Networking
+
+The browser must reach Thor directly by IP (not SSH port-forwarding) for WebRTC video to work. RTP media flows over UDP on dynamically negotiated ports. If on different subnets, use Tailscale or WireGuard.
+
+The frontend auto-derives API URLs from `window.location.hostname` — no env vars needed.
+
+## Camera configuration
+
+### Discovering cameras
 
 ```bash
-cd /Users/xda/Projects/learn-gui
-cp .env.host.example .env.host
-# Set THOR_IP in .env.host (recommended), or pass THOR_IP inline when running make.
-set -a; source .env.host; set +a
-make setup_host
+make find_cameras
 ```
 
-### 2) Daily run
+Lists all connected OAK cameras with device ID, model name, USB speed, and sensors:
 
-Start remote media/camera services on Thor (keep this terminal running):
+```
+Found 3 OAK camera(s):
+
+  Device ID:  19443010C188E24800
+  Model:      OAK-D-W
+  USB path:   1.2.1.1.2
+  USB speed:  USB 3.0 (Super)
+  Sensors:    CAM_A: OV9782 (COLOR/MONO), CAM_B: OV9282 (MONO/COLOR), CAM_C: OV9282 (MONO/COLOR)
+
+  Device ID:  1944301071566F5A00
+  Model:      OAK-1-W
+  ...
+```
+
+### Slot mapping (cameras.json)
+
+Create `cameras.json` in the repo root to assign device IDs to slots:
+
+```json
+{
+  "left": "<device_id>",
+  "center": "<device_id>",
+  "right": "<device_id>"
+}
+```
+
+The OAK-D model should go in the center slot. If `cameras.json` is absent, cameras are assigned automatically with an OAK-D center-slot heuristic.
+
+This file is machine-specific and gitignored.
+
+### Stream settings
+
+Default: **1280x800 @ 30fps**, H.264 Baseline, CBR 4000 kbps.
+
+Override bitrate via `CAMERA_ENCODER_BITRATE_KBPS` env var.
+
+### Wrist camera rotation
+
+Left and right wrist cameras are rotated 90 degrees in the browser (CSS transform, zero server cost) — left rotates clockwise, right counter-clockwise.
+
+## Commands
+
+### Development
 
 ```bash
-cd /Users/xda/Projects/learn-gui
-set -a; source .env.remote; set +a
-make dev_remote
+make dev                         # full stack (cleanup -> Vite + FastAPI + camera guard)
+SKIP_CAMERA_GUARD=1 make dev     # skip camera guard (no cameras attached)
+CAMERA_GUARD_MIN_CAMERAS=2 make dev  # require only 2 cameras
+make dev-cleanup                 # kill stale listeners on ports 5173/8000/9876/9090
+make find_cameras                # list connected OAK cameras
 ```
 
-Start GUI/frontend on host (keep this terminal running):
+### Individual runners
 
 ```bash
-cd /Users/xda/Projects/learn-gui
-set -a; source .env.host; set +a
-make dev_host
+make gui             # tc-gui (FastAPI on :8000, opens cameras via aiortc)
+make recorder        # tc-recorder (Zarr recording service)
+make replay ARGS="data_logs/<run_id>/<camera>.zarr"
+make robot           # standalone robot demo loop + Rerun
+make client          # Vite dev server (:5173)
+make mjpeg           # MJPEG debug server for OAK cameras (:8001)
+make mjpeg_elp       # MJPEG debug server for ELP cameras (:8002)
 ```
 
-If `THOR_IP` is not set in `.env.host`, run:
+Running Python scripts directly:
+```bash
+uv run --project server python scripts/<script>.py
+```
+
+### Testing
 
 ```bash
-THOR_IP=<thor-ip> make dev_host
+make test            # all tests (client + server)
+make test-client     # vitest only
+make test-server     # pytest only (verbose)
+make lint            # ruff (Python) + tsc (TypeScript)
 ```
 
-### 3) Verify
+## Architecture
 
-On host:
+### Runtime model
 
-```bash
-curl http://127.0.0.1:8000/health
-curl http://127.0.0.1:8000/webrtc/cameras
-```
+`make dev` starts these concurrent processes:
 
-Open:
+| Process | Command | Port |
+|---------|---------|------|
+| `tc-gui` | FastAPI server + aiortc WebRTC | 8000 |
+| `tc-recorder` | Zarr recording service (optional) | ZMQ 5557 |
+| `tc-robot` | Synthetic robot env (optional) | ZMQ 5555 |
+| Rerun | gRPC + Web viewer (optional) | 9876, 9090 |
+| Vite | React frontend | 5173 |
 
-```text
-http://localhost:5173
-```
-
-Expected result: one live tile per camera streamed from Thor MediaMTX WHEP (`http://<thor-ip>:8889/<camera>/whep`).
-
-### 4) Cleanup and recovery
-
-On Thor:
-
-```bash
-make dev_remote_cleanup
-make dev_remove      # alias of make dev_remote
-```
-
-### 5) Wi-Fi fallback
-
-If Ethernet/Wi-Fi bandwidth is limited, lower camera load in `.env.remote`:
-
-- `CAMERA_FPS=20`
-- `CAMERA_WIDTH=640`
-- `CAMERA_HEIGHT=360`
-
-## Runtime model
-
-`make dev` runs a split runner stack:
-
-- `tc-gui` (FastAPI + Rerun viewer)
-- `tc-camera` (DepthAI to MediaMTX relay)
-- `tc-recorder` (recording service)
-- MediaMTX relay
-- Vite frontend
-
-Robot runner starts by default in dev startup (disable with `RUN_ROBOT_RUNNER=0 make dev`).
-
-## Individual commands
-
-```bash
-make test-client   # vitest only
-make test-server   # pytest only
-make dev-cleanup   # kill stale dev listeners on 5173/8000/9876/9090 only
-make dev-guard     # run camera live guard checks against a running stack
-make setup_host    # install host dependencies (client + server)
-make setup_remote  # install remote dependencies (server + mediamtx check)
-make dev_host      # host-only stack (tc-gui + Vite + optional tc-robot)
-make dev_remote    # remote-only stack (mediamtx + tc-camera)
-make dev_remote_cleanup  # clean remote media ports/processes
-make dev_remove    # alias for dev_remote
-make gui           # start tc-gui
-make camera        # start tc-camera
-make recorder      # start tc-recorder
-make replay ARGS="data_logs/<run_id>/<camera>.zarr"   # replay logs
-make robot         # run standalone robot demo loop
-make lint          # ruff + tsc
-make clean         # remove build artifacts
-uv run --project server python scripts/run_camera.py  # local OAK camera windows
-```
-
-## Camera live guard
-
-`make dev` now runs a regression guard that checks camera readiness across:
-
-- API discovery (`/health`, `/webrtc/cameras`)
-- Relay path readiness (MediaMTX API `/v3/paths/list`)
-- GUI rendering (headless browser validates live tiles)
-
-If any camera is not live before timeout, `make dev` exits non-zero and prints
-an error. The GUI guard also saves verification snapshots:
-
-- `docs/assets/screenshots/camera-live-guard-success.png`
-- `docs/assets/screenshots/camera-live-guard-failure.png`
-
-To bypass guards intentionally (for environments without cameras):
-
-```bash
-SKIP_CAMERA_GUARD=1 make dev
-```
-
-## GUI usage
-
-The viewer opens in **Zen mode** by default — camera and Rerun panels fill the
-screen with no controls visible. Three display modes let you trade information
-density for content area:
-
-| Mode        | Content | Description                                      |
-|-------------|---------|--------------------------------------------------|
-| **Zen**     | 98%     | Bare panels, floating status dot, no chrome       |
-| **Compact** | 81%     | Slim topbar, inline metrics, timeline scrubber    |
-| **Focus**   | 87%     | Single panel fills the viewport                   |
-
-### Keyboard shortcuts
-
-All shortcuts work from **any** mode — no need to be in a specific mode first.
-
-| Key     | Action                                               |
-|---------|------------------------------------------------------|
-| `Z`     | Toggle Zen ↔ Compact (from Focus goes to Zen)        |
-| `F`     | Toggle Focus on Rerun (from any mode)                |
-| `1`     | Toggle Focus on Camera (from any mode)               |
-| `2`     | Toggle Focus on Rerun (from any mode)                |
-| `Esc`   | Go back one level: Focus → Compact → Zen             |
-
-### Mouse interactions
-
-- **Hover top edge** in Zen mode to temporarily reveal the topbar
-- **Drag the resize handle** between panels to adjust the split (persisted)
-- **Double-click the resize handle** to reset to the default 35/65 split
-- **Click the floating dot** (bottom-right in Zen) to enter Compact mode
-
-## Recording logs (Zarr)
-
-Click **Rec** in the topbar to start logging the live camera stream alongside
-a synthetic sine trajectory. Click **Stop** to end the run.
-
-By default logs are written to:
+### Video pipeline
 
 ```
-data_logs/<run_id>/<camera>.zarr/
+OAK camera (DepthAI)
+  -> H.264 hardware encode on device
+  -> aiortc H264Track (in FastAPI process)
+  -> Browser (WebRTC via RTCPeerConnection)
 ```
 
-Set `DATA_LOG_DIR` to override the output path.
+The browser fetches camera names from `GET /webrtc/cameras`, then does WHEP-style signaling: POST SDP offer to `/webrtc/<camera>/whep`, receive SDP answer, attach video track.
 
-Camera relay defaults to device-side `H264` for broad browser compatibility
-(Chrome, Firefox, Safari). The host stays relay-only for streaming and only
-decodes on the recording path when recording is active.
+### Camera boot resilience
+
+If a device fails to boot (e.g. USB bandwidth contention on shared hubs), the session manager retries up to 2 times per device then gives up — preventing repeated boot attempts from crashing already-active camera connections.
+
+### Frontend layout
+
+Three display modes (toggled by keyboard shortcuts):
+
+| Mode | Content | Description |
+|------|---------|-------------|
+| **Zen** | 98% | Bare panels, floating status dot, no chrome |
+| **Compact** | 81% | Slim topbar, inline metrics, timeline scrubber |
+| **Focus** | 87% | Single panel fills the viewport |
+
+Camera layout: center (hero tile, top) + left/right (wrist tiles, bottom row).
+
+**Keyboard shortcuts:** `Z` (Zen/Compact), `F`/`2` (Focus Rerun), `1` (Focus Camera), `Esc` (back one level).
+
+## Configuration
+
+Copy `.env.example` to `.env` and edit as needed. Most defaults work out of the box.
+
+| Variable | Purpose |
+|----------|---------|
+| `CAMERA_ENCODER_BITRATE_KBPS` | H.264 encoder bitrate (default: 4000) |
+| `MIN_CAMERAS` | Minimum cameras for API startup (default: 3) |
+| `CAMERA_GUARD_MIN_CAMERAS` | Minimum cameras for dev guard (default: 3) |
+| `CAMERAS_JSON` | Path to camera slot config (default: `cameras.json`) |
+| `SKIP_CAMERA_GUARD` | Skip camera guard in `make dev` |
+| `GUI_NO_RERUN` | Disable Rerun viewer |
+| `DATA_LOG_DIR` | Override recording output path |
+| `VITE_API_BASE_URL` | Override FastAPI URL (auto-detected from browser hostname) |
 
 ## External references
 
