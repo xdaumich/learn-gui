@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Sequence
 
 import depthai as dai
@@ -129,11 +132,40 @@ def _get_device_profile(info: dai.DeviceInfo) -> DeviceProfile:
     raw_name = str(getattr(info, "name", "") or "")
     # Unbooted DeviceInfo.name is typically a USB path, not model metadata.
     device_name = raw_name if raw_name.upper().startswith("OAK-") else "OAK"
+
     return DeviceProfile(
         device_info=info,
         device_name=device_name,
         device_id=device_id,
     )
+
+
+_CAMERAS_JSON_PATH = Path(os.environ.get("CAMERAS_JSON", "cameras.json"))
+
+_log = logging.getLogger("tc.camera")
+
+
+def _load_slot_map() -> dict[str, str]:
+    """Load slot→device_id mapping from cameras.json (if it exists).
+
+    Expected format: ``{"left": "<mxid>", "center": "<mxid>", "right": "<mxid>"}``
+    """
+    path = _CAMERAS_JSON_PATH
+    if not path.is_absolute():
+        # Resolve relative to repo root (two levels up from this file).
+        path = Path(__file__).resolve().parents[2] / path
+    if not path.is_file():
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        slot_map = {k: str(v) for k, v in data.items() if k in CAMERA_STREAM_LAYOUT}
+        if slot_map:
+            _log.info("Loaded camera slot map from %s: %s", path, slot_map)
+        return slot_map
+    except Exception as exc:
+        _log.warning("Failed to load %s: %s", path, exc)
+        return {}
 
 
 def _discover_device_profiles() -> list[DeviceProfile]:
@@ -168,7 +200,31 @@ def _resolve_target_streams(
     if not existing_targets and not new_profiles:
         return []
 
-    # Apply OAK-D center-slot ordering to the new profiles.
+    # --- Config-driven slot assignment (cameras.json) ---
+    slot_map = _load_slot_map()
+    if slot_map:
+        profiles_by_id = {p.device_id: p for p in new_profiles}
+        active_by_slot = {t.stream_name: t for t in existing_targets}
+        targets: list[DeviceStreamTarget] = []
+        for slot in CAMERA_STREAM_LAYOUT:
+            if slot in active_by_slot:
+                targets.append(active_by_slot[slot])
+            elif slot in slot_map and slot_map[slot] in profiles_by_id:
+                profile = profiles_by_id[slot_map[slot]]
+                targets.append(
+                    DeviceStreamTarget(
+                        stream_name=slot,
+                        device_info=profile.device_info,
+                        device_name=profile.device_name,
+                        device_id=profile.device_id,
+                    )
+                )
+        if requested is not None:
+            requested_count = max(0, len(order_camera_sockets(requested)))
+            targets = targets[:requested_count]
+        return targets
+
+    # --- Fallback: auto-detect with OAK-D center-slot heuristic ---
     oak_d = [p for p in new_profiles if p.is_oak_d]
     other = [p for p in new_profiles if not p.is_oak_d]
     if oak_d:
@@ -184,7 +240,7 @@ def _resolve_target_streams(
     # Build target list — existing slots preserved, empty slots filled in order.
     active_by_slot = {t.stream_name: t for t in existing_targets}
     new_iter = iter(ordered_new)
-    targets: list[DeviceStreamTarget] = []
+    targets = []
     for slot in CAMERA_STREAM_LAYOUT:
         if slot in active_by_slot:
             targets.append(active_by_slot[slot])

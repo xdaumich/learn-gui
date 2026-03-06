@@ -21,7 +21,6 @@ from telemetry_console.camera import (
     DEFAULT_KEYFRAME_INTERVAL,
     DeviceStreamTarget,
     _build_h264_pipeline,
-    _discover_device_profiles,
     _resolve_target_streams,
     CAMERA_STREAM_LAYOUT,
 )
@@ -81,6 +80,10 @@ class SessionManager:
         """
         log = logging.getLogger("tc.sessions")
         deadline = time.monotonic() + max(0.1, timeout_s) if min_cameras > 0 else 0.0
+        # Track devices that repeatedly fail to boot so we stop disrupting
+        # already-open cameras with futile retry attempts.
+        _MAX_DEVICE_FAILURES = 2
+        device_failures: dict[str, int] = {}
 
         while True:
             existing_targets = [
@@ -89,6 +92,8 @@ class SessionManager:
             targets = _resolve_target_streams(None, existing_targets=existing_targets)
             for target in targets:
                 if target.stream_name in self.slots:
+                    continue
+                if device_failures.get(target.device_id, 0) >= _MAX_DEVICE_FAILURES:
                     continue
                 try:
                     device = dai.Device(target.device_info)
@@ -99,6 +104,12 @@ class SessionManager:
                     pipeline.start()
                 except Exception as exc:
                     log.warning("Failed to open %s: %s", target.stream_name, exc)
+                    device_failures[target.device_id] = device_failures.get(target.device_id, 0) + 1
+                    if device_failures[target.device_id] >= _MAX_DEVICE_FAILURES:
+                        log.warning(
+                            "Giving up on %s (device %s) after %d failures",
+                            target.stream_name, target.device_id, _MAX_DEVICE_FAILURES,
+                        )
                     continue
                 track = H264Track(queue=queue, fps=fps)
                 self.slots[target.stream_name] = CameraSlot(

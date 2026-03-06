@@ -31,3 +31,4 @@ coverage/
 data_logs/
 captures/
 .worktrees/
+cameras.json

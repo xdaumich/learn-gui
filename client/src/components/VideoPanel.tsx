@@ -282,6 +282,13 @@ function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled, varia
         playsInline
         muted
         data-testid="camera-stream"
+        style={
+          cameraName === "left"
+            ? { transform: "rotate(90deg)" }
+            : cameraName === "right"
+              ? { transform: "rotate(-90deg)" }
+              : undefined
+        }
       />
       <div className="camera-label">{label}</div>
     </div>
