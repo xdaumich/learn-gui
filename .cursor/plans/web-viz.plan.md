@@ -4,6 +4,27 @@ overview: ""
 todos: []
 isProject: false
 
+## ✨ Feature #50
+
+- 🎯 **Goal:** Make the live three-camera strip follow each feed's true display ratio while keeping the left/right cameras at half the center camera height.
+- 📝 **Description:** Updated `VideoPanel.tsx` to read each video's real metadata dimensions (`videoWidth` / `videoHeight`) and derive the displayed aspect ratio from that instead of hardcoding all tile sizes. The layout now computes side/center width weights from those live ratios so the side feeds stay at exactly half the center height while preserving full FOV. Switched the strip packing from grid columns to a contiguous flex row so the video boxes sit tightly together without leftover slack between tiles.
+- 🧪 **Test:** `make test-client` — fail; Vitest is still blocked in this workspace because `tests/client/setupTests.ts` cannot resolve `@testing-library/jest-dom/vitest`.
+- 🔄 **Integration / Regression:** `N/A` — verified visually in the browser at `http://192.168.10.104:5173/`; the refreshed live snapshot shows full-FOV center/side feeds and side tiles at half the center height.
+
+## 🐛 Bug Fix #49
+
+- 🎯 **Goal:** Remove the last vertical black seams between the side cameras and the center feed in the live three-camera strip.
+- 📝 **Description:** Verified the live page with a browser snapshot and found the remaining gap was center-feed pillarboxing, not grid spacing. The center camera stream is effectively `4 / 3`, so sizing its tile as `16 / 9` forced black bars on both sides. Updated the camera strip column ratios to `27 / 64 / 27` and changed the hero tile to `aspect-ratio: 4 / 3`, which lets the left, center, and right feeds touch edge-to-edge while still keeping the full uncropped view for all three cameras.
+- 🧪 **Test:** `make test-client` — fail; Vitest is still blocked in this workspace because `tests/client/setupTests.ts` cannot resolve `@testing-library/jest-dom/vitest`.
+- 🔄 **Integration / Regression:** `N/A` — verified visually by reloading the live app at `http://192.168.10.104:5173/` and taking a fresh browser snapshot; the seams are gone.
+
+## 🐛 Bug Fix #48
+
+- 🎯 **Goal:** Remove the black gaps between the left, center, and right camera feeds so the three-camera strip reads as one connected view.
+- 📝 **Description:** Reworked the camera-only layout to size each tile from its final displayed aspect ratio instead of stretching every tile to full panel height. The center camera now renders in a `16 / 9` hero tile, the left/right cameras render in `9 / 16` wrist tiles, and the side-camera rotation moved out of inline styles into CSS classes that resize the `<video>` box before rotating it. That prevents the rotated feeds from preserving the wrong bounding box and leaving large empty margins around the side streams.
+- 🧪 **Test:** `make test-client` — fail; Vitest is currently blocked by workspace module resolution (`@testing-library/jest-dom/vitest` from `tests/client/setupTests.ts` does not resolve in this repo state, so no client tests execute).
+- 🔄 **Integration / Regression:** `cd client && npm exec tsc --noEmit` — fail; the same repo-level dependency resolution issue prevents TypeScript from resolving client test dependencies under `tests/client/`.
+
 ## 🐛 Bug Fix #1
 
 - 🎯 **Goal:** Fix OAK-D camera streaming — right camera never starting, center cycling

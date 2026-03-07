@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { useWebRTC } from "../hooks/useWebRTC";
 
 const STALLED_STREAM_RECOVERY_COOLDOWN_MS = 30_000;
 const STALLED_STREAM_RECONNECT_DELAY_MS = 800;
+const DEFAULT_NATIVE_ASPECT_RATIO = 16 / 9;
+const DEFAULT_DISPLAY_ASPECT_RATIOS: Record<string, number> = {
+  left: 9 / 16,
+  center: 4 / 3,
+  right: 9 / 16,
+};
 
 export default function VideoPanel() {
   const {
@@ -17,6 +23,9 @@ export default function VideoPanel() {
   const hasStreams = streams.length > 0;
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRecoveryAtRef = useRef(0);
+  const [displayAspectRatios, setDisplayAspectRatios] = useState<Record<string, number>>(
+    DEFAULT_DISPLAY_ASPECT_RATIOS,
+  );
   const liveCount = streams.length;
   const missingCount =
     expectedCameraCount !== null ? Math.max(expectedCameraCount - liveCount, 0) : 0;
@@ -100,7 +109,18 @@ export default function VideoPanel() {
     };
   }, []);
 
-  const streamOrder = useMemo(() => ["center", "left", "right"], []);
+  const streamOrder = useMemo(() => ["left", "center", "right"], []);
+  const handleAspectRatioChange = useCallback((cameraName: string, aspectRatio: number) => {
+    if (!cameraName || !Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+      return;
+    }
+    setDisplayAspectRatios((current) => {
+      if (Math.abs((current[cameraName] ?? 0) - aspectRatio) < 0.001) {
+        return current;
+      }
+      return { ...current, [cameraName]: aspectRatio };
+    });
+  }, []);
   const orderedStreams = useMemo(
     () =>
       [...streams].sort((left, right) => {
@@ -110,44 +130,36 @@ export default function VideoPanel() {
       }),
     [streams, streamOrder],
   );
-  const heroTile = useMemo(() => {
-    const entry = orderedStreams.find((e) => (e.name ?? "").toLowerCase() === "center");
-    if (!entry) return null;
-    const slot = entry.name ?? "";
-    const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
-    return (
-      <VideoTile
-        key={slot || entry.id}
-        stream={entry.stream}
-        cameraName={slot}
-        label={label}
-        monitorEnabled={connectionState === "connected"}
-        onStalled={recoverStalledStream}
-        variant="hero"
-      />
-    );
-  }, [connectionState, orderedStreams, recoverStalledStream]);
+  const cameraWidthWeights = useMemo(() => {
+    const left = 0.5 * (displayAspectRatios.left ?? DEFAULT_DISPLAY_ASPECT_RATIOS.left);
+    const center = displayAspectRatios.center ?? DEFAULT_DISPLAY_ASPECT_RATIOS.center;
+    const right = 0.5 * (displayAspectRatios.right ?? DEFAULT_DISPLAY_ASPECT_RATIOS.right);
+    return { left, center, right };
+  }, [displayAspectRatios]);
 
-  const wristTiles = useMemo(
+  const cameraTiles = useMemo(
     () =>
-      orderedStreams
-        .filter((e) => (e.name ?? "").toLowerCase() !== "center")
-        .map((entry) => {
-          const slot = entry.name ?? "";
-          const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
-          return (
-            <VideoTile
-              key={slot || entry.id}
-              stream={entry.stream}
-              cameraName={slot}
-              label={label}
-              monitorEnabled={connectionState === "connected"}
-              onStalled={recoverStalledStream}
-              variant="wrist"
-            />
-          );
-        }),
-    [connectionState, orderedStreams, recoverStalledStream],
+      orderedStreams.map((entry) => {
+        const slot = entry.name ?? "";
+        const name = slot.toLowerCase();
+        const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
+        const variant = name === "center" ? "hero" : "wrist";
+        const widthWeight = cameraWidthWeights[name] ?? 1;
+        return (
+          <VideoTile
+            key={slot || entry.id}
+            stream={entry.stream}
+            cameraName={slot}
+            label={label}
+            monitorEnabled={connectionState === "connected"}
+            onStalled={recoverStalledStream}
+            onAspectRatioChange={handleAspectRatioChange}
+            variant={variant}
+            widthWeight={widthWeight}
+          />
+        );
+      }),
+    [cameraWidthWeights, connectionState, handleAspectRatioChange, orderedStreams, recoverStalledStream],
   );
 
   return (
@@ -161,10 +173,7 @@ export default function VideoPanel() {
         {hasStreams ? (
           <>
             <div className="camera-grid">
-              {heroTile}
-              <div className="camera-grid__bottom">
-                {wristTiles}
-              </div>
+              {cameraTiles}
             </div>
             <div className="stream-status">{statusText}</div>
           </>
@@ -185,11 +194,39 @@ type VideoTileProps = {
   label: string;
   monitorEnabled: boolean;
   onStalled: (cameraName: string) => void;
+  onAspectRatioChange: (cameraName: string, aspectRatio: number) => void;
   variant?: "hero" | "wrist";
+  widthWeight: number;
 };
 
-function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled, variant }: VideoTileProps) {
+function VideoTile({
+  stream,
+  cameraName,
+  label,
+  monitorEnabled,
+  onStalled,
+  onAspectRatioChange,
+  variant,
+  widthWeight,
+}: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const normalizedCameraName = cameraName.toLowerCase();
+  const isRotated = normalizedCameraName === "left" || normalizedCameraName === "right";
+  const rotationClass =
+    normalizedCameraName === "left"
+      ? "video-stream--rotate-left"
+      : normalizedCameraName === "right"
+        ? "video-stream--rotate-right"
+        : "";
+  const [nativeAspectRatio, setNativeAspectRatio] = useState(
+    normalizedCameraName === "center" ? 4 / 3 : DEFAULT_NATIVE_ASPECT_RATIO,
+  );
+  const displayAspectRatio = isRotated ? 1 / nativeAspectRatio : nativeAspectRatio;
+  const tileStyle: CSSProperties = {
+    aspectRatio: displayAspectRatio,
+    flex: `${widthWeight} 1 0px`,
+    ...(isRotated ? { ["--native-aspect-ratio" as const]: `${nativeAspectRatio}` } : {}),
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -205,6 +242,35 @@ function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled, varia
       video.srcObject = null;
     };
   }, [stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const updateAspectRatio = () => {
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        return;
+      }
+      const nextNativeAspectRatio = video.videoWidth / video.videoHeight;
+      setNativeAspectRatio((current) =>
+        Math.abs(current - nextNativeAspectRatio) < 0.001 ? current : nextNativeAspectRatio,
+      );
+      onAspectRatioChange(
+        normalizedCameraName,
+        isRotated ? video.videoHeight / video.videoWidth : nextNativeAspectRatio,
+      );
+    };
+
+    updateAspectRatio();
+    video.addEventListener("loadedmetadata", updateAspectRatio);
+    video.addEventListener("resize", updateAspectRatio);
+    return () => {
+      video.removeEventListener("loadedmetadata", updateAspectRatio);
+      video.removeEventListener("resize", updateAspectRatio);
+    };
+  }, [isRotated, normalizedCameraName, onAspectRatioChange, stream]);
 
   useEffect(() => {
     if (!monitorEnabled) {
@@ -274,21 +340,18 @@ function VideoTile({ stream, cameraName, label, monitorEnabled, onStalled, varia
   }, [cameraName, label, monitorEnabled, onStalled, stream]);
 
   return (
-    <div className={`camera-tile ${variant === "hero" ? "camera-tile--hero" : "camera-tile--wrist"}`} data-camera={cameraName}>
+    <div
+      className={`camera-tile ${variant === "hero" ? "camera-tile--hero" : "camera-tile--wrist"}`}
+      data-camera={normalizedCameraName}
+      style={tileStyle}
+    >
       <video
         ref={videoRef}
-        className="video-stream"
+        className={`video-stream ${rotationClass}`.trim()}
         autoPlay
         playsInline
         muted
         data-testid="camera-stream"
-        style={
-          cameraName === "left"
-            ? { transform: "rotate(90deg)" }
-            : cameraName === "right"
-              ? { transform: "rotate(-90deg)" }
-              : undefined
-        }
       />
       <div className="camera-label">{label}</div>
     </div>

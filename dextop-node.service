@@ -1,0 +1,23 @@
+[Unit]
+Description=Dextop Node (Zenoh robot-to-remote bridge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=dexmate
+Group=dexmate
+Environment=HOME=/home/dexmate
+Environment=PATH=/home/dexmate/miniconda3/bin:/home/dexmate/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+ExecStart=/home/dexmate/miniconda3/bin/dextop node start
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dextop-node
+
+[Install]
+WantedBy=multi-user.target

@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 0.25rem;
+  padding: 0;
 }
 
 /* ── Video Panel ─────────────────────────────────────────────── */
@@ -41,61 +41,62 @@
 }
 
 .media-placeholder.has-video {
-  align-content: stretch;
+  align-content: center;
   justify-items: stretch;
 }
 
-/* ── Camera Grid: hero top, wrist pair bottom ────────────────── */
+/* ── Camera Grid: [small left] [big center] [small right] ──── */
 
 .camera-grid {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  gap: 0;
   width: 100%;
-  height: 100%;
+  max-height: 100%;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
 }
 
 .camera-tile {
   position: relative;
-  border-radius: 8px;
   overflow: hidden;
   background: #000;
+  min-width: 0;
   min-height: 0;
 }
 
 .camera-tile--hero {
-  flex: 1 1 0;
-  min-height: 0;
+  aspect-ratio: 4 / 3;
 }
 
-.camera-grid__bottom {
-  display: flex;
-  gap: 0.25rem;
-  flex: 0 0 30%;
-  min-height: 80px;
-}
-
-.camera-grid__bottom .camera-tile--wrist {
-  flex: 1 1 0;
-  min-height: 0;
+.camera-tile--wrist {
+  aspect-ratio: 9 / 16;
 }
 
 .video-stream {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
   background: #000;
-  border-radius: 8px;
 }
 
-/* ── Wrist camera rotation (physically mounted sideways) ──── */
-
-.camera-tile[data-camera="left"] .video-stream {
-  transform: rotate(-90deg);
+.camera-tile--wrist .video-stream {
+  width: calc(var(--native-aspect-ratio, 1.7778) * 100%);
+  height: calc(100% / var(--native-aspect-ratio, 1.7778));
 }
 
-.camera-tile[data-camera="right"] .video-stream {
-  transform: rotate(90deg);
+.video-stream--rotate-left {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.video-stream--rotate-right {
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 .camera-label {

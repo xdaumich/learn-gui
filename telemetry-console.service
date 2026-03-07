@@ -1,0 +1,25 @@
+[Unit]
+Description=Telemetry Console (learn-gui dev stack)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=dexmate
+Group=dexmate
+WorkingDirectory=/home/dexmate/learn-gui
+Environment=PATH=/home/dexmate/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+Environment=HOME=/home/dexmate
+Environment=SKIP_CAMERA_GUARD=1
+ExecStart=/usr/bin/bash /home/dexmate/learn-gui/scripts/dev.sh
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telemetry-console
+
+[Install]
+WantedBy=multi-user.target

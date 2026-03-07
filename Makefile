@@ -1,10 +1,66 @@
 .PHONY: \
+	help \
 	setup external \
 	install_tools install_uv install_npm install_udev_rules \
 	dev dev-cleanup dev-guard find_cameras \
 	robot client server gui recorder replay mjpeg mjpeg_elp \
 	test test-client test-server test-integration \
-	lint clean
+	lint clean \
+	service-install service-uninstall service-start service-stop service-status service-logs \
+	dextop-install dextop-uninstall dextop-start dextop-stop dextop-status dextop-logs
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo ""
+	@echo "  Telemetry Console — Makefile targets"
+	@echo "  ====================================="
+	@echo ""
+	@echo "  Setup"
+	@echo "    make setup              Install all deps (npm + uv + udev rules)"
+	@echo "    make external           Clone external reference repos (submodules)"
+	@echo ""
+	@echo "  Development"
+	@echo "    make dev                Full stack (cleanup + Vite + FastAPI + camera guard)"
+	@echo "    make dev-cleanup        Kill stale listeners on dev ports"
+	@echo "    make dev-guard          Run camera health checks"
+	@echo ""
+	@echo "  Individual runners"
+	@echo "    make gui                FastAPI server (tc-gui on :8000)"
+	@echo "    make client             Vite dev server (:5173)"
+	@echo "    make robot              Standalone robot demo loop + Rerun"
+	@echo "    make recorder           Zarr recording service"
+	@echo "    make replay ARGS=<path> Replay a recorded .zarr episode"
+	@echo "    make mjpeg              MJPEG debug server for OAK cameras (:8001)"
+	@echo "    make mjpeg_elp          MJPEG debug server for ELP cameras (:8002)"
+	@echo "    make find_cameras       Discover connected cameras"
+	@echo ""
+	@echo "  Testing"
+	@echo "    make test               All tests (client + server)"
+	@echo "    make test-client        Vitest only"
+	@echo "    make test-server        Pytest only"
+	@echo "    make test-integration   Playwright integration tests"
+	@echo ""
+	@echo "  Quality"
+	@echo "    make lint               Ruff (Python) + tsc (TypeScript)"
+	@echo "    make clean              Remove build caches"
+	@echo ""
+	@echo "  Telemetry Console service (systemd)"
+	@echo "    make service-install    Install systemd unit"
+	@echo "    make service-start      Enable + start (persists across reboots)"
+	@echo "    make service-stop       Stop the service"
+	@echo "    make service-status     Show status and recent logs"
+	@echo "    make service-logs       Follow live journal logs"
+	@echo "    make service-uninstall  Stop, disable, and remove unit"
+	@echo ""
+	@echo "  Dextop Node service (systemd)"
+	@echo "    make dextop-install     Install systemd unit"
+	@echo "    make dextop-start       Enable + start (persists across reboots)"
+	@echo "    make dextop-stop        Stop the service"
+	@echo "    make dextop-status      Show status and recent logs"
+	@echo "    make dextop-logs        Follow live journal logs"
+	@echo "    make dextop-uninstall   Stop, disable, and remove unit"
+	@echo ""
 
 LOCAL_BIN ?= $(HOME)/.local/bin
 UV_BIN := $(LOCAL_BIN)/uv
@@ -132,3 +188,39 @@ lint:
 
 clean:
 	rm -rf client/dist client/node_modules/.vite server/__pycache__ tests/server/__pycache__
+
+service-install:
+	@bash scripts/camera_service.sh --install
+
+service-uninstall:
+	@bash scripts/camera_service.sh --uninstall
+
+service-start:
+	@bash scripts/camera_service.sh --start
+
+service-stop:
+	@bash scripts/camera_service.sh --stop
+
+service-status:
+	@bash scripts/camera_service.sh --status
+
+service-logs:
+	@bash scripts/camera_service.sh --logs
+
+dextop-install:
+	@bash scripts/dextop_service.sh --install
+
+dextop-uninstall:
+	@bash scripts/dextop_service.sh --uninstall
+
+dextop-start:
+	@bash scripts/dextop_service.sh --start
+
+dextop-stop:
+	@bash scripts/dextop_service.sh --stop
+
+dextop-status:
+	@bash scripts/dextop_service.sh --status
+
+dextop-logs:
+	@bash scripts/dextop_service.sh --logs
