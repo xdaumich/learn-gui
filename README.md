@@ -15,7 +15,13 @@ external/                  Reference repos (git submodules, not used at runtime)
 
 ## Quick start
 
-**Jetson Thor** runs everything. Any machine on the network views the GUI by opening a browser to `http://<thor-ip>:5173`. No code runs on the viewer machine.
+**Jetson Thor** runs everything. Any machine on the network views the GUI by opening a browser to:
+
+```
+http://<thor-ip>:5173
+```
+
+No code runs on the viewer machine.
 
 ```bash
 make setup           # install all deps (npm + uv + udev rules)
@@ -82,6 +88,8 @@ Left and right wrist cameras are rotated 90 degrees in the browser (CSS transfor
 
 ## Commands
 
+Run `make help` to see all targets.
+
 ### Development
 
 ```bash
@@ -89,6 +97,7 @@ make dev                         # full stack (cleanup -> Vite + FastAPI + camer
 SKIP_CAMERA_GUARD=1 make dev     # skip camera guard (no cameras attached)
 CAMERA_GUARD_MIN_CAMERAS=2 make dev  # require only 2 cameras
 make dev-cleanup                 # kill stale listeners on ports 5173/8000/9876/9090
+make dev-guard                   # run camera health checks (WebRTC + GUI decode)
 make find_cameras                # list connected OAK cameras
 ```
 
@@ -96,10 +105,11 @@ make find_cameras                # list connected OAK cameras
 
 ```bash
 make gui             # tc-gui (FastAPI on :8000, opens cameras via aiortc)
+make server          # uvicorn with --reload (:8000)
+make client          # Vite dev server (:5173)
+make robot           # standalone robot demo loop + Rerun
 make recorder        # tc-recorder (Zarr recording service)
 make replay ARGS="data_logs/<run_id>/<camera>.zarr"
-make robot           # standalone robot demo loop + Rerun
-make client          # Vite dev server (:5173)
 make mjpeg           # MJPEG debug server for OAK cameras (:8001)
 make mjpeg_elp       # MJPEG debug server for ELP cameras (:8002)
 ```
@@ -112,10 +122,36 @@ uv run --project server python scripts/<script>.py
 ### Testing
 
 ```bash
-make test            # all tests (client + server)
-make test-client     # vitest only
-make test-server     # pytest only (verbose)
-make lint            # ruff (Python) + tsc (TypeScript)
+make test               # all tests (client + server)
+make test-client        # vitest only
+make test-server        # pytest only (verbose)
+make test-integration   # Playwright integration tests (requires make dev running)
+make lint               # ruff (Python) + tsc (TypeScript)
+make clean              # remove build caches
+```
+
+### Systemd services
+
+Telemetry Console can run as a systemd service for unattended operation:
+
+```bash
+make service-install    # install systemd unit
+make service-start      # enable + start (persists across reboots)
+make service-stop       # stop the service
+make service-status     # show status and recent logs
+make service-logs       # follow live journal logs
+make service-uninstall  # stop, disable, and remove unit
+```
+
+Dextop Node service (separate systemd unit):
+
+```bash
+make dextop-install     # install systemd unit
+make dextop-start       # enable + start (persists across reboots)
+make dextop-stop        # stop the service
+make dextop-status      # show status and recent logs
+make dextop-logs        # follow live journal logs
+make dextop-uninstall   # stop, disable, and remove unit
 ```
 
 ## Architecture
