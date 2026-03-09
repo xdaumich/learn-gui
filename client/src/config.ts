@@ -26,13 +26,4 @@ export const API_BASE_URL = trimTrailingSlash(
 );
 
 export const CAMERA_LIVE_GRACE_MS = envNumber(import.meta.env.VITE_CAMERA_LIVE_GRACE_MS, 4000);
-export const WHEP_CONNECT_RETRY_MS = envNumber(
-  import.meta.env.VITE_WHEP_CONNECT_RETRY_MS,
-  400,
-);
-export const WHEP_CONNECT_TIMEOUT_MS = envNumber(
-  import.meta.env.VITE_WHEP_CONNECT_TIMEOUT_MS,
-  12000,
-);
-export const ICE_GATHER_TIMEOUT_MS = envNumber(import.meta.env.VITE_ICE_GATHER_TIMEOUT_MS, 2000);
 export const TOPBAR_HOVER_DELAY_MS = envNumber(import.meta.env.VITE_TOPBAR_HOVER_DELAY_MS, 400);

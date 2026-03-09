@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { useWebRTC } from "../hooks/useWebRTC";
+import { useMJPEG } from "../hooks/useMJPEG";
 
-const STALLED_STREAM_RECOVERY_COOLDOWN_MS = 30_000;
-const STALLED_STREAM_RECONNECT_DELAY_MS = 800;
 const DEFAULT_NATIVE_ASPECT_RATIO = 16 / 9;
 const DEFAULT_DISPLAY_ASPECT_RATIOS: Record<string, number> = {
   left: 9 / 16,
@@ -13,20 +11,18 @@ const DEFAULT_DISPLAY_ASPECT_RATIOS: Record<string, number> = {
 
 export default function VideoPanel() {
   const {
-    streams,
+    cameras,
     connectionState,
     expectedCameraCount,
     partialLive,
     connect,
     disconnect,
-  } = useWebRTC();
-  const hasStreams = streams.length > 0;
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastRecoveryAtRef = useRef(0);
+  } = useMJPEG();
+  const hasCameras = cameras.length > 0;
   const [displayAspectRatios, setDisplayAspectRatios] = useState<Record<string, number>>(
     DEFAULT_DISPLAY_ASPECT_RATIOS,
   );
-  const liveCount = streams.length;
+  const liveCount = cameras.length;
   const missingCount =
     expectedCameraCount !== null ? Math.max(expectedCameraCount - liveCount, 0) : 0;
   const cameraGuardMessage =
@@ -44,10 +40,6 @@ export default function VideoPanel() {
         return "Failed";
       case "disconnected":
         return "Disconnected";
-      case "closed":
-        return "Closed";
-      case "new":
-        return "Starting…";
       case "idle":
         return "Idle";
       default:
@@ -56,16 +48,14 @@ export default function VideoPanel() {
   }, [connectionState]);
 
   useEffect(() => {
-    void Promise.resolve(connect()).catch(() => {
-      // Keep UI stable; connection errors are reflected via connectionState.
-    });
+    void Promise.resolve(connect()).catch(() => {});
     return () => {
       disconnect();
     };
   }, [connect, disconnect]);
 
   useEffect(() => {
-    if (!["disconnected", "failed", "closed"].includes(connectionState)) {
+    if (!["disconnected", "failed"].includes(connectionState)) {
       return;
     }
     const timer = setTimeout(() => {
@@ -75,39 +65,6 @@ export default function VideoPanel() {
       clearTimeout(timer);
     };
   }, [connectionState, connect]);
-
-  const recoverStalledStream = useCallback(
-    (_cameraName: string) => {
-      if (connectionState !== "connected") {
-        return;
-      }
-      if (reconnectTimerRef.current) {
-        return;
-      }
-      const now = Date.now();
-      if (now - lastRecoveryAtRef.current < STALLED_STREAM_RECOVERY_COOLDOWN_MS) {
-        return;
-      }
-      lastRecoveryAtRef.current = now;
-      disconnect();
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null;
-        void Promise.resolve(connect()).catch(() => {
-          // Retry is handled by connection-state transitions.
-        });
-      }, STALLED_STREAM_RECONNECT_DELAY_MS);
-    },
-    [connect, connectionState, disconnect],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-    };
-  }, []);
 
   const streamOrder = useMemo(() => ["left", "center", "right"], []);
   const handleAspectRatioChange = useCallback((cameraName: string, aspectRatio: number) => {
@@ -121,14 +78,14 @@ export default function VideoPanel() {
       return { ...current, [cameraName]: aspectRatio };
     });
   }, []);
-  const orderedStreams = useMemo(
+  const orderedCameras = useMemo(
     () =>
-      [...streams].sort((left, right) => {
-        const leftIndex = streamOrder.indexOf((left.name ?? "").toLowerCase());
-        const rightIndex = streamOrder.indexOf((right.name ?? "").toLowerCase());
-        return leftIndex - rightIndex;
+      [...cameras].sort((a, b) => {
+        const ai = streamOrder.indexOf(a.name.toLowerCase());
+        const bi = streamOrder.indexOf(b.name.toLowerCase());
+        return ai - bi;
       }),
-    [streams, streamOrder],
+    [cameras, streamOrder],
   );
   const cameraWidthWeights = useMemo(() => {
     const left = 0.5 * (displayAspectRatios.left ?? DEFAULT_DISPLAY_ASPECT_RATIOS.left);
@@ -139,38 +96,35 @@ export default function VideoPanel() {
 
   const cameraTiles = useMemo(
     () =>
-      orderedStreams.map((entry) => {
-        const slot = entry.name ?? "";
-        const name = slot.toLowerCase();
-        const label = slot ? slot.charAt(0).toUpperCase() + slot.slice(1) : "Camera";
+      orderedCameras.map((entry) => {
+        const name = entry.name.toLowerCase();
+        const label = name.charAt(0).toUpperCase() + name.slice(1);
         const variant = name === "center" ? "hero" : "wrist";
-        const widthWeight = cameraWidthWeights[name] ?? 1;
+        const widthWeight = cameraWidthWeights[name as keyof typeof cameraWidthWeights] ?? 1;
         return (
-          <VideoTile
-            key={slot || entry.id}
-            stream={entry.stream}
-            cameraName={slot}
+          <MJPEGTile
+            key={name}
+            url={entry.url}
+            cameraName={name}
             label={label}
-            monitorEnabled={connectionState === "connected"}
-            onStalled={recoverStalledStream}
             onAspectRatioChange={handleAspectRatioChange}
             variant={variant}
             widthWeight={widthWeight}
           />
         );
       }),
-    [cameraWidthWeights, connectionState, handleAspectRatioChange, orderedStreams, recoverStalledStream],
+    [cameraWidthWeights, handleAspectRatioChange, orderedCameras],
   );
 
   return (
     <section className="video-panel">
-      <div className={`media-placeholder ${hasStreams ? "has-video" : ""}`}>
+      <div className={`media-placeholder ${hasCameras ? "has-video" : ""}`}>
         {cameraGuardMessage && (
           <div className="stream-error" role="alert">
             {cameraGuardMessage}
           </div>
         )}
-        {hasStreams ? (
+        {hasCameras ? (
           <>
             <div className="camera-grid">
               {cameraTiles}
@@ -188,28 +142,24 @@ export default function VideoPanel() {
   );
 }
 
-type VideoTileProps = {
-  stream: MediaStream;
+type MJPEGTileProps = {
+  url: string;
   cameraName: string;
   label: string;
-  monitorEnabled: boolean;
-  onStalled: (cameraName: string) => void;
   onAspectRatioChange: (cameraName: string, aspectRatio: number) => void;
   variant?: "hero" | "wrist";
   widthWeight: number;
 };
 
-function VideoTile({
-  stream,
+function MJPEGTile({
+  url,
   cameraName,
   label,
-  monitorEnabled,
-  onStalled,
   onAspectRatioChange,
   variant,
   widthWeight,
-}: VideoTileProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+}: MJPEGTileProps) {
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const normalizedCameraName = cameraName.toLowerCase();
   const isRotated = normalizedCameraName === "left" || normalizedCameraName === "right";
   const rotationClass =
@@ -228,116 +178,18 @@ function VideoTile({
     ...(isRotated ? { ["--native-aspect-ratio" as const]: `${nativeAspectRatio}` } : {}),
   };
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-    video.srcObject = stream;
-    const playResult = video.play();
-    if (playResult && typeof playResult.catch === "function") {
-      playResult.catch(() => {});
-    }
-    return () => {
-      video.srcObject = null;
-    };
-  }, [stream]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-
-    const updateAspectRatio = () => {
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
-        return;
-      }
-      const nextNativeAspectRatio = video.videoWidth / video.videoHeight;
-      setNativeAspectRatio((current) =>
-        Math.abs(current - nextNativeAspectRatio) < 0.001 ? current : nextNativeAspectRatio,
-      );
-      onAspectRatioChange(
-        normalizedCameraName,
-        isRotated ? video.videoHeight / video.videoWidth : nextNativeAspectRatio,
-      );
-    };
-
-    updateAspectRatio();
-    video.addEventListener("loadedmetadata", updateAspectRatio);
-    video.addEventListener("resize", updateAspectRatio);
-    return () => {
-      video.removeEventListener("loadedmetadata", updateAspectRatio);
-      video.removeEventListener("resize", updateAspectRatio);
-    };
-  }, [isRotated, normalizedCameraName, onAspectRatioChange, stream]);
-
-  useEffect(() => {
-    if (!monitorEnabled) {
-      return;
-    }
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-    const track = stream.getVideoTracks()[0];
-    if (!track) {
-      return;
-    }
-
-    const tickMs = 2000;
-    const stallThresholdMs = 15_000;
-    const warmupMs = 8000;
-    const warmupUntil = Date.now() + warmupMs;
-    let stagnantMs = 0;
-    let lastTime = -1;
-    let triedSoftRecovery = false;
-
-    const interval = setInterval(() => {
-      if (track.readyState !== "live") {
-        return;
-      }
-      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-        return;
-      }
-      if (video.paused) {
-        const result = video.play();
-        if (result && typeof result.catch === "function") {
-          result.catch(() => {});
-        }
-        return;
-      }
-      const currentTime = video.currentTime;
-      if (currentTime > lastTime + 0.001) {
-        lastTime = currentTime;
-        stagnantMs = 0;
-        triedSoftRecovery = false;
-        return;
-      }
-      if (Date.now() < warmupUntil) {
-        return;
-      }
-      stagnantMs += tickMs;
-      if (!triedSoftRecovery && stagnantMs >= stallThresholdMs / 2) {
-        triedSoftRecovery = true;
-        video.srcObject = stream;
-        const result = video.play();
-        if (result && typeof result.catch === "function") {
-          result.catch(() => {});
-        }
-        return;
-      }
-      if (stagnantMs >= stallThresholdMs) {
-        onStalled(cameraName || label.toLowerCase());
-        stagnantMs = 0;
-        triedSoftRecovery = false;
-      }
-    }, tickMs);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [cameraName, label, monitorEnabled, onStalled, stream]);
+  const handleLoad = useCallback(() => {
+    const img = imgRef.current;
+    if (!img || img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
+    const nextNative = img.naturalWidth / img.naturalHeight;
+    setNativeAspectRatio((current) =>
+      Math.abs(current - nextNative) < 0.001 ? current : nextNative,
+    );
+    onAspectRatioChange(
+      normalizedCameraName,
+      isRotated ? img.naturalHeight / img.naturalWidth : nextNative,
+    );
+  }, [isRotated, normalizedCameraName, onAspectRatioChange]);
 
   return (
     <div
@@ -345,13 +197,13 @@ function VideoTile({
       data-camera={normalizedCameraName}
       style={tileStyle}
     >
-      <video
-        ref={videoRef}
+      <img
+        ref={imgRef}
+        src={url}
         className={`video-stream ${rotationClass}`.trim()}
-        autoPlay
-        playsInline
-        muted
+        onLoad={handleLoad}
         data-testid="camera-stream"
+        alt={`${label} camera`}
       />
       <div className="camera-label">{label}</div>
     </div>

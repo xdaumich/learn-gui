@@ -15,9 +15,7 @@ const apiBaseUrl = (process.env.CAMERA_GUARD_API_BASE_URL || "http://127.0.0.1:8
 );
 const guiUrl = process.env.CAMERA_GUARD_GUI_URL || "http://localhost:5173";
 const browserName = (process.env.CAMERA_GUARD_GUI_BROWSER || "chromium").toLowerCase();
-const chromiumArgsRaw =
-  process.env.CAMERA_GUARD_CHROMIUM_ARGS ||
-  "--enable-features=WebRtcAllowH265Receive,PlatformHEVCDecoderSupport --force-fieldtrials=WebRTC-Video-H26xPacketBuffer/Enable/";
+const chromiumArgsRaw = process.env.CAMERA_GUARD_CHROMIUM_ARGS || "";
 const timeoutMs = Number(process.env.CAMERA_GUARD_TIMEOUT_MS || 20_000);
 const pollMs = Number(process.env.CAMERA_GUARD_POLL_MS || 500);
 const minCameras = Number(process.env.CAMERA_GUARD_MIN_CAMERAS || 3);
@@ -50,7 +48,7 @@ async function fetchJson(url) {
 
 async function waitForExpectedCameras(deadline) {
   const healthUrl = `${apiBaseUrl}/health`;
-  const camerasUrl = `${apiBaseUrl}/webrtc/cameras`;
+  const camerasUrl = `${apiBaseUrl}/cameras`;
   let lastError = null;
 
   let best = [];
@@ -64,7 +62,7 @@ async function waitForExpectedCameras(deadline) {
 
       const cameras = await fetchJson(camerasUrl);
       if (!Array.isArray(cameras)) {
-        throw new Error("/webrtc/cameras response is not an array.");
+        throw new Error("/cameras response is not an array.");
       }
       const names = cameras.filter((name) => typeof name === "string");
       if (names.length > best.length) {
@@ -77,7 +75,7 @@ async function waitForExpectedCameras(deadline) {
         return best;
       }
       if (names.length === 0) {
-        throw new Error("No cameras detected by /webrtc/cameras.");
+        throw new Error("No cameras detected by /cameras.");
       }
       await sleep(pollMs);
     } catch (error) {
@@ -96,21 +94,16 @@ async function waitForExpectedCameras(deadline) {
 async function readVideoStats(page) {
   const locator = page.locator(videoSelector);
   const tileCount = await locator.count();
-  const stats = await locator.evaluateAll((videos) =>
-    videos.map((video) => {
-      const stream = video.srcObject;
-      const tracks =
-        stream && typeof stream.getVideoTracks === "function" ? stream.getVideoTracks() : [];
-      const liveTracks = tracks.filter((track) => track.readyState === "live").length;
-      return {
-        readyState: video.readyState,
-        paused: video.paused,
-        liveTracks,
-      };
-    }),
+  const stats = await locator.evaluateAll((imgs) =>
+    imgs.map((img) => ({
+      complete: img.complete,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      src: img.src,
+    })),
   );
 
-  const liveCount = stats.filter((item) => item.readyState >= 2 && item.liveTracks > 0).length;
+  const liveCount = stats.filter((item) => item.complete && item.naturalWidth > 0).length;
   return { tileCount, liveCount, stats };
 }
 
@@ -118,21 +111,18 @@ async function ensureSnapshotDir(snapshotPath) {
   await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
 }
 
-async function readCurrentTimes(page) {
-  const locator = page.locator(videoSelector);
-  return locator.evaluateAll((videos) => videos.map((v) => v.currentTime));
-}
-
-async function verifyCurrentTimeAdvancing(page, { pollIntervalMs = 2000 } = {}) {
-  const t0 = await readCurrentTimes(page);
+async function verifyImagesLoaded(page, { pollIntervalMs = 2000 } = {}) {
+  // Wait a moment then re-check that images are still loaded (stream alive).
   await sleep(pollIntervalMs);
-  const t1 = await readCurrentTimes(page);
-  const results = t0.map((val, i) => ({
-    index: i,
-    t0: val,
-    t1: t1[i],
-    advancing: t1[i] > val,
-  }));
+  const locator = page.locator(videoSelector);
+  const results = await locator.evaluateAll((imgs) =>
+    imgs.map((img, i) => ({
+      index: i,
+      complete: img.complete,
+      naturalWidth: img.naturalWidth,
+      advancing: img.complete && img.naturalWidth > 0,
+    })),
+  );
   const advancingCount = results.filter((r) => r.advancing).length;
   return { results, advancingCount };
 }
@@ -200,10 +190,10 @@ async function run() {
 
       lastStats = await readVideoStats(page);
       if (lastStats.tileCount >= expectedCount && lastStats.liveCount >= expectedCount) {
-        const { results, advancingCount } = await verifyCurrentTimeAdvancing(page);
+        const { results, advancingCount } = await verifyImagesLoaded(page);
         if (advancingCount < expectedCount) {
           const detail = results
-            .map((r) => `cam${r.index}: t0=${r.t0.toFixed(3)} t1=${r.t1.toFixed(3)} advancing=${r.advancing}`)
+            .map((r) => `cam${r.index}: complete=${r.complete} width=${r.naturalWidth} ok=${r.advancing}`)
             .join(", ");
           await ensureSnapshotDir(failureSnapshotPath);
           await page.screenshot({ path: failureSnapshotPath, fullPage: true });

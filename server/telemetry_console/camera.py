@@ -15,8 +15,7 @@ import depthai as dai
 DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 800
 DEFAULT_FPS = 30
-DEFAULT_KEYFRAME_INTERVAL = 30
-DEFAULT_ENCODER_BITRATE_KBPS = 4000
+DEFAULT_MJPEG_QUALITY = 80
 
 # Order used for the 3-stream layout in UI.
 CAMERA_STREAM_LAYOUT = ("left", "center", "right")
@@ -263,39 +262,24 @@ def _resolve_target_streams(
     return targets
 
 
-def build_h264_pipeline(
+def build_mjpeg_pipeline(
     *,
     device: dai.Device,
-    width: int,
-    height: int,
-    fps: int,
-    keyframe_interval: int,
+    width: int = DEFAULT_WIDTH,
+    height: int = DEFAULT_HEIGHT,
+    fps: int = DEFAULT_FPS,
+    quality: int = DEFAULT_MJPEG_QUALITY,
 ) -> tuple[dai.Pipeline, dai.MessageQueue]:
+    """Build a DepthAI pipeline: Camera → MJPEG VideoEncoder."""
     pipeline = dai.Pipeline(device)
 
     cam = pipeline.create(dai.node.Camera).build(dai.CameraBoardSocket.CAM_A)
     cam_out = cam.requestOutput((width, height), dai.ImgFrame.Type.NV12, fps=fps)
 
     encoder = pipeline.create(dai.node.VideoEncoder)
-    encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.H264_BASELINE)
-    try:
-        encoder.setKeyframeFrequency(keyframe_interval)
-    except Exception:
-        pass
-    try:
-        bitrate_kbps = int(
-            os.environ.get("CAMERA_ENCODER_BITRATE_KBPS", DEFAULT_ENCODER_BITRATE_KBPS)
-        )
-        encoder.setRateControlMode(dai.VideoEncoderProperties.RateControlMode.CBR)
-        encoder.setBitrateKbps(max(150, bitrate_kbps))
-        encoder.setNumBFrames(0)
-    except Exception:
-        pass
+    encoder.setDefaultProfilePreset(fps, dai.VideoEncoderProperties.Profile.MJPEG)
+    encoder.setQuality(quality)
 
     cam_out.link(encoder.input)
-    queue = encoder.out.createOutputQueue(maxSize=1, blocking=False)
+    queue = encoder.out.createOutputQueue(maxSize=4, blocking=False)
     return pipeline, queue
-
-
-# Keep old private name as alias so existing callers (webrtc_sessions.py) work during migration.
-_build_h264_pipeline = build_h264_pipeline

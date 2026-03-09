@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Smoke-check camera live readiness through the aiortc WebRTC path.
+"""Smoke-check camera live readiness through the MJPEG path.
 
 This script is intended for `make dev` startup guards. It verifies:
 1) API health is reachable.
-2) Cameras are discoverable through `/webrtc/cameras`.
+2) Cameras are discoverable through `/cameras`.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def _wait_for_health(health_url: str, *, timeout_s: float, poll_s: float) -> Non
         try:
             payload = _request_json(health_url, timeout_s=5.0)
             if payload.get("status") == "ok":
-                print("[camera-guard:webrtc] API health check passed.", flush=True)
+                print("[camera-guard] API health check passed.", flush=True)
                 return
         except Exception as exc:  # pragma: no cover - guarded by integration runtime
             last_error = exc
@@ -79,11 +79,11 @@ def _wait_for_health(health_url: str, *, timeout_s: float, poll_s: float) -> Non
 def _load_camera_names(cameras_url: str) -> list[str]:
     payload = _request_json(cameras_url, timeout_s=5.0)
     if not isinstance(payload, list):
-        raise RuntimeError("`/webrtc/cameras` did not return a JSON array.")
+        raise RuntimeError("`/cameras` did not return a JSON array.")
 
     names = [str(item) for item in payload if isinstance(item, str)]
     if not names:
-        raise RuntimeError("No cameras detected by `/webrtc/cameras`.")
+        raise RuntimeError("No cameras detected by `/cameras`.")
     return names
 
 
@@ -104,7 +104,7 @@ def _wait_for_camera_names(
             if len(names) > len(best):
                 best = names
                 print(
-                    f"[camera-guard:webrtc] Discovered {len(best)} camera(s) so far: "
+                    f"[camera-guard] Discovered {len(best)} camera(s) so far: "
                     f"{', '.join(best)}.",
                     flush=True,
                 )
@@ -119,7 +119,7 @@ def _wait_for_camera_names(
 
     details = f"last_error={last_error}" if last_error else "no camera payload"
     raise RuntimeError(
-        f"Camera discovery timed out after {timeout_s:.1f}s (`/webrtc/cameras`, {details})."
+        f"Camera discovery timed out after {timeout_s:.1f}s (`/cameras`, {details})."
     )
 
 
@@ -168,7 +168,7 @@ def main() -> int:
     min_cameras = _env_int("CAMERA_GUARD_MIN_CAMERAS", 3)
 
     health_url = f"{base_url}/health"
-    cameras_url = f"{base_url}/webrtc/cameras"
+    cameras_url = f"{base_url}/cameras"
     robot_status_url = f"{base_url}/robot/status"
 
     try:
@@ -180,13 +180,13 @@ def main() -> int:
             min_cameras=min_cameras,
         )
         print(
-            f"[camera-guard:webrtc] PASS: "
+            f"[camera-guard] PASS: "
             f"{len(camera_names)} camera(s) online ({', '.join(camera_names)}).",
             flush=True,
         )
         if min_cameras > 0 and len(camera_names) < min_cameras:
             print(
-                f"[camera-guard:webrtc] ERROR: "
+                f"[camera-guard] ERROR: "
                 f"only {len(camera_names)} camera(s) detected after full timeout, "
                 f"minimum required is {min_cameras}.",
                 file=sys.stderr,
@@ -201,18 +201,18 @@ def main() -> int:
             age_s = robot_status.get("age_s")
             age_text = f"{float(age_s):.2f}s" if isinstance(age_s, (int, float)) else "unknown"
             print(
-                "[camera-guard:webrtc] PASS: "
+                "[camera-guard] PASS: "
                 f"robot trajectory heartbeat is live (age={age_text}).",
                 flush=True,
             )
         else:
-            print("[camera-guard:webrtc] Robot liveness check skipped by env.", flush=True)
+            print("[camera-guard] Robot liveness check skipped by env.", flush=True)
         return 0
     except urllib.error.URLError as exc:
-        print(f"[camera-guard:webrtc] ERROR: API request failed: {exc}", file=sys.stderr)
+        print(f"[camera-guard] ERROR: API request failed: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
-        print(f"[camera-guard:webrtc] ERROR: {exc}", file=sys.stderr)
+        print(f"[camera-guard] ERROR: {exc}", file=sys.stderr)
         return 1
 
 

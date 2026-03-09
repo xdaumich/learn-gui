@@ -106,8 +106,9 @@ class TestThreeDeviceDiscovery:
 class TestThreeDeviceSlotAssignment:
     """Verify _resolve_target_streams assigns positional stream names correctly."""
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_assigns_three_slots(self, mock_discover: Any) -> None:
+    def test_assigns_three_slots(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="OAKDW_CENTER_MXID", name="OAK-D-W"),
@@ -132,8 +133,9 @@ class TestThreeDeviceSlotAssignment:
         stream_names = [t.stream_name for t in targets]
         assert stream_names == ["left", "center", "right"]
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_oak_d_assigned_to_center(self, mock_discover: Any) -> None:
+    def test_oak_d_assigned_to_center(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="OAKDW", name="OAK-D-W"),
@@ -157,8 +159,9 @@ class TestThreeDeviceSlotAssignment:
 
         assert center_target.device_name == "OAK-D-W"
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_oak_1_devices_on_sides(self, mock_discover: Any) -> None:
+    def test_oak_1_devices_on_sides(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="OAKDW", name="OAK-D-W"),
@@ -184,8 +187,9 @@ class TestThreeDeviceSlotAssignment:
         assert left_target.device_name == "OAK-1"
         assert right_target.device_name == "OAK-1"
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_each_target_has_distinct_device_id(self, mock_discover: Any) -> None:
+    def test_each_target_has_distinct_device_id(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="OAKDW", name="OAK-D-W"),
@@ -209,8 +213,9 @@ class TestThreeDeviceSlotAssignment:
 
         assert len(set(device_ids)) == 3, "Each stream target must use a different physical device"
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_stream_names_match_layout_constant(self, mock_discover: Any) -> None:
+    def test_stream_names_match_layout_constant(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="OAKDW", name="OAK-D-W"),
@@ -236,88 +241,71 @@ class TestThreeDeviceSlotAssignment:
 
 
 # ===================================================================
-# Test 3: /webrtc/cameras API returns all three stream names
+# Test 3: /cameras API returns all three stream names
 # ===================================================================
 
 
-class TestWebRTCCamerasEndpointThreeDevices:
-    """Verify the /webrtc/cameras endpoint returns ["left", "center", "right"]."""
+class TestCamerasEndpointThreeDevices:
+    """Verify the /cameras endpoint returns ["left", "center", "right"]."""
 
-    def _populate_slots(self):
-        """Populate session_manager.slots with 3 fake camera slots."""
-        from telemetry_console.webrtc_sessions import session_manager, CameraSlot
-        from telemetry_console.webrtc_track import H264Track
-
+    def _populate_cameras(self):
+        """Populate MJPEG camera dicts with 3 fake camera slots."""
+        import telemetry_console.gui_api as gui_api_module
         for name in ("left", "center", "right"):
-            mock_queue = MagicMock()
-            mock_queue.tryGet.return_value = None
-            session_manager.slots[name] = CameraSlot(
-                name=name,
-                device=MagicMock(),
-                pipeline=MagicMock(),
-                track=H264Track(queue=mock_queue, fps=30),
-            )
+            gui_api_module._cameras[name] = name
 
-    def _clear_slots(self):
-        from telemetry_console.webrtc_sessions import session_manager
-        session_manager.slots.clear()
+    def _clear_cameras(self):
+        import telemetry_console.gui_api as gui_api_module
+        gui_api_module._cameras.clear()
 
     def test_returns_three_stream_names_from_active_targets(self) -> None:
-        """When 3 camera slots are open, /webrtc/cameras must return all three."""
+        """When 3 camera slots are open, /cameras must return all three."""
         from telemetry_console.gui_api import app
 
-        self._populate_slots()
+        self._populate_cameras()
         try:
             client = TestClient(app, raise_server_exceptions=False)
-            response = client.get("/webrtc/cameras")
+            response = client.get("/cameras")
 
             assert response.status_code == 200
             cameras = response.json()
             assert cameras == ["left", "center", "right"]
             assert len(cameras) == 3
         finally:
-            self._clear_slots()
+            self._clear_cameras()
 
     def test_returns_three_names_in_layout_order(self) -> None:
         """Slots populated out of order still return layout order."""
-        from telemetry_console.webrtc_sessions import session_manager, CameraSlot
-        from telemetry_console.webrtc_track import H264Track
+        import telemetry_console.gui_api as gui_api_module
         from telemetry_console.gui_api import app
 
         # Add in reverse order
         for name in ("right", "center", "left"):
-            mock_queue = MagicMock()
-            mock_queue.tryGet.return_value = None
-            session_manager.slots[name] = CameraSlot(
-                name=name,
-                device=MagicMock(),
-                pipeline=MagicMock(),
-                track=H264Track(queue=mock_queue, fps=30),
-            )
+            gui_api_module._cameras[name] = name
 
         try:
             client = TestClient(app, raise_server_exceptions=False)
-            response = client.get("/webrtc/cameras")
+            response = client.get("/cameras")
 
             assert response.status_code == 200
             cameras = response.json()
             assert cameras == ["left", "center", "right"]
         finally:
-            self._clear_slots()
+            self._clear_cameras()
 
     def test_camera_count_is_exactly_three(self) -> None:
         """Guard test: exactly 3 cameras, not 2 or less."""
         from telemetry_console.gui_api import app
 
-        self._populate_slots()
+        self._populate_cameras()
         try:
             client = TestClient(app, raise_server_exceptions=False)
-            response = client.get("/webrtc/cameras")
+            response = client.get("/cameras")
 
             cameras = response.json()
             assert len(cameras) == 3, f"Expected exactly 3 cameras, got {len(cameras)}: {cameras}"
         finally:
-            self._clear_slots()
+            self._clear_cameras()
 
 
 # ===================================================================
@@ -372,14 +360,16 @@ class TestDeviceProfileClassification:
 class TestEdgeCases:
     """Verify behavior with fewer or more devices."""
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_no_devices_returns_empty(self, mock_discover: Any) -> None:
+    def test_no_devices_returns_empty(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = []
         targets = _resolve_target_streams(requested=None)
         assert targets == []
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_one_device_gets_left_slot(self, mock_discover: Any) -> None:
+    def test_one_device_gets_left_slot(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="SOLO", name="OAK-1"),
@@ -391,8 +381,9 @@ class TestEdgeCases:
         assert len(targets) == 1
         assert targets[0].stream_name == "left"
 
+    @patch("telemetry_console.camera._load_slot_map", return_value={})
     @patch("telemetry_console.camera._discover_device_profiles")
-    def test_two_devices_get_left_center(self, mock_discover: Any) -> None:
+    def test_two_devices_get_left_center(self, mock_discover: Any, _mock_slot_map: Any) -> None:
         mock_discover.return_value = [
             DeviceProfile(
                 device_info=_fake_device_info(device_id="OAKDW", name="OAK-D-W"),

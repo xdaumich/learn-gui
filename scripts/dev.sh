@@ -202,7 +202,7 @@ fi
 
 if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
   CAMERA_GUARD_REQUIRE_ROBOT="${CAMERA_GUARD_REQUIRE_ROBOT:-${RUN_ROBOT_RUNNER_RESOLVED}}"
-  echo "==> Running camera live guard (WebRTC, min_cameras=${CAMERA_GUARD_MIN_CAMERAS})..."
+  echo "==> Running camera live guard (MJPEG, min_cameras=${CAMERA_GUARD_MIN_CAMERAS})..."
   CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
     CAMERA_GUARD_REQUIRE_ROBOT="${CAMERA_GUARD_REQUIRE_ROBOT}" \
     CAMERA_GUARD_MIN_CAMERAS="${CAMERA_GUARD_MIN_CAMERAS}" \
@@ -214,7 +214,7 @@ if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
     SKIP_GUI_GUARD="1"
   fi
   if [[ "${SKIP_GUI_GUARD}" == "1" ]]; then
-    echo "==> Skipping GUI snapshot guard (headless environment; WebRTC guard already passed)."
+    echo "==> Skipping GUI snapshot guard (headless environment; API guard already passed)."
   elif node -e "import('playwright').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
     echo "==> Running camera live guard (GUI + snapshot, min_cameras=${CAMERA_GUARD_MIN_CAMERAS})..."
     if CAMERA_GUARD_API_BASE_URL="http://127.0.0.1:${API_PORT}" \
@@ -224,7 +224,7 @@ if [[ "${SKIP_CAMERA_GUARD:-0}" != "1" ]]; then
       node scripts/check_camera_live_gui.mjs; then
       echo "==> GUI snapshot guard passed."
     else
-      echo "==> WARNING: GUI snapshot guard failed. WebRTC guard already passed — continuing."
+      echo "==> WARNING: GUI snapshot guard failed. API guard already passed — continuing."
     fi
   else
     echo "==> Playwright package not found, skipping GUI snapshot guard."
