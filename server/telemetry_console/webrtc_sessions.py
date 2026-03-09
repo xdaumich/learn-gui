@@ -12,8 +12,6 @@ from aiortc import (
     RTCRtpSender,
     RTCSessionDescription,
 )
-from aiortc.contrib.media import MediaRelay
-
 from telemetry_console.camera import (
     DEFAULT_FPS,
     DEFAULT_HEIGHT,
@@ -56,7 +54,6 @@ class SessionManager:
     slots: dict[str, CameraSlot] = field(default_factory=dict)
     _peers: list[RTCPeerConnection] = field(default_factory=list)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    _relay: MediaRelay = field(default_factory=MediaRelay)
 
     # --- Lifecycle ---
 
@@ -175,10 +172,11 @@ class SessionManager:
                         pass
                 await pc.close()
 
-        # Use MediaRelay to fan-out the single H264Track to multiple viewers
-        # without frame-stealing (fix #3).
-        relayed_track = self._relay.subscribe(slot.track)
-        pc.addTrack(relayed_track)
+        # Create a per-peer subscriber track that reads from the shared
+        # H264Track.  Each subscriber starts with the cached keyframe so
+        # decoders can initialise immediately, regardless of join timing.
+        subscriber_track = slot.track.create_subscriber()
+        pc.addTrack(subscriber_track)
 
         # Force H.264 codec — without this, aiortc picks VP8 (Chrome's first
         # preference) and the browser tries to decode our H.264 bytes as VP8.
