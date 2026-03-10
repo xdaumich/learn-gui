@@ -1,6 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { useMJPEG } from "../hooks/useMJPEG";
+import { API_BASE_URL } from "../config";
+
+function useCameraFPS(enabled: boolean) {
+  const [fpsMap, setFpsMap] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    const poll = async () => {
+      while (active) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/cameras/fps`);
+          if (res.ok) {
+            const data = await res.json();
+            if (active) setFpsMap(data);
+          }
+        } catch { /* ignore */ }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    };
+    void poll();
+    return () => { active = false; };
+  }, [enabled]);
+
+  return fpsMap;
+}
 
 const DEFAULT_NATIVE_ASPECT_RATIO = 16 / 9;
 const DEFAULT_DISPLAY_ASPECT_RATIOS: Record<string, number> = {
@@ -19,6 +45,7 @@ export default function VideoPanel() {
     disconnect,
   } = useMJPEG();
   const hasCameras = cameras.length > 0;
+  const fpsMap = useCameraFPS(hasCameras);
   const [displayAspectRatios, setDisplayAspectRatios] = useState<Record<string, number>>(
     DEFAULT_DISPLAY_ASPECT_RATIOS,
   );
@@ -107,13 +134,14 @@ export default function VideoPanel() {
             url={entry.url}
             cameraName={name}
             label={label}
+            fps={fpsMap[name] ?? null}
             onAspectRatioChange={handleAspectRatioChange}
             variant={variant}
             widthWeight={widthWeight}
           />
         );
       }),
-    [cameraWidthWeights, handleAspectRatioChange, orderedCameras],
+    [cameraWidthWeights, fpsMap, handleAspectRatioChange, orderedCameras],
   );
 
   return (
@@ -146,6 +174,7 @@ type MJPEGTileProps = {
   url: string;
   cameraName: string;
   label: string;
+  fps: number | null;
   onAspectRatioChange: (cameraName: string, aspectRatio: number) => void;
   variant?: "hero" | "wrist";
   widthWeight: number;
@@ -155,6 +184,7 @@ function MJPEGTile({
   url,
   cameraName,
   label,
+  fps,
   onAspectRatioChange,
   variant,
   widthWeight,
@@ -206,6 +236,7 @@ function MJPEGTile({
         alt={`${label} camera`}
       />
       <div className="camera-label">{label}</div>
+      {fps !== null && <div className="camera-fps">{fps} fps</div>}
     </div>
   );
 }

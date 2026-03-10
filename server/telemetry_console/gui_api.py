@@ -35,6 +35,9 @@ _cameras: dict[str, str] = {}
 _devices: dict[str, dai.Device] = {}
 _pipelines: dict[str, dai.Pipeline] = {}
 _queues: dict[str, dai.MessageQueue] = {}
+_frame_counts: dict[str, int] = {}
+_fps_values: dict[str, float] = {}
+_fps_last_reset: dict[str, float] = {}
 
 
 def _open_cameras(*, min_cameras: int = 0, timeout_s: float = 30.0, retry_s: float = 2.0):
@@ -245,10 +248,21 @@ async def stream(camera: str):
 
     async def generate():
         loop = asyncio.get_event_loop()
+        _frame_counts.setdefault(camera, 0)
+        _fps_last_reset.setdefault(camera, time.monotonic())
         while True:
             try:
                 frame = await loop.run_in_executor(None, lambda: queue.get())
                 jpeg_data = frame.getData().tobytes()
+
+                _frame_counts[camera] += 1
+                now = time.monotonic()
+                elapsed = now - _fps_last_reset.get(camera, now)
+                if elapsed >= 1.0:
+                    _fps_values[camera] = _frame_counts[camera] / elapsed
+                    _frame_counts[camera] = 0
+                    _fps_last_reset[camera] = now
+
                 yield (
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n"
@@ -262,6 +276,11 @@ async def stream(camera: str):
         generate(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@app.get("/cameras/fps")
+async def cameras_fps() -> dict[str, float]:
+    return {cam: round(_fps_values.get(cam, 0.0), 1) for cam in _cameras}
 
 
 @app.get("/recording/status", response_model=RecordingStatus)

@@ -113,6 +113,19 @@
   background: rgba(0, 0, 0, 0.5);
 }
 
+.camera-fps {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.5);
+}
+
 .stream-status {
   position: absolute;
   left: 0.75rem;
